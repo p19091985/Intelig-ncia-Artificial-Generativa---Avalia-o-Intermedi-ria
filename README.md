@@ -1,0 +1,1 @@
+# Intelig-ncia-Artificial-Generativa---Avalia-o-Intermedi-ria
