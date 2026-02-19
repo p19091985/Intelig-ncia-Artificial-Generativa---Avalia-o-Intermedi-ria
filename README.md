@@ -12,6 +12,18 @@ agentes: "Claude 4.6 Opus · Gemini 1.5 Pro · IDE Antigravity"
 
 ---
 
+> [!IMPORTANT]
+> **🔐 Credenciais de Acesso (Ambiente de Demonstração)**
+>
+> Ao iniciar o sistema, utilize as credenciais abaixo para explorar os diferentes perfis de acesso e suas funcionalidades específicas:
+>
+> | Usuário | Senha | Perfil | Acesso Principal |
+> | :--- | :---: | :--- | :--- |
+> | `admin` | `123` | **Administrador** | 🛡️ Acesso Total (Configurações, Usuários, Logs) |
+> | `eng.patrik` | `123` | **Engenharia** | 🧪 Laboratório, I.A. de Traços e Relatórios |
+> | `prod.francis` | `123` | **Produção** | 🏭 Controle de Fábrica, Estoque e Dashboard |
+> | `vend.calos` | `123` | **Comercial** | 🤝 Gestão de Clientes e Novos Pedidos |
+
 ## Sumário
 
 1. [Contexto e Objetivo](#1-contexto-e-objetivo)
@@ -92,9 +104,9 @@ Esta foi a **maior mudança técnica** do projeto. Instruí os agentes Claude e 
 resultado = GenericRepository.execute_query_to_dataframe(sql, params)
 ```
 
-*   **Problema 1:** Controle transacional manual ou inexistente.
-*   **Problema 2:** Se uma operação falhasse no meio de um processo, não havia rollback seguro.
-*   **Problema 3:** Código misturava regras de conexão com execução de queries.
+* **Problema 1:** Controle transacional manual ou inexistente.
+* **Problema 2:** Se uma operação falhasse no meio de um processo, não havia rollback seguro.
+* **Problema 3:** Código misturava regras de conexão com execução de queries.
 
 #### Como ficou (Novo) — Unit of Work + Repository Pattern
 
@@ -165,7 +177,7 @@ A estrutura de arquivos foi reorganizada para separar responsabilidades:
 | **Tipagem** | Ausente | Type Hints em todo lugar: `connection: Connection`, `-> pd.DataFrame` |
 | **Exceções** | Genéricas | Específicas: `SimulationRollback`, tratamento de `StopException` |
 
-> **Prompt usado (Claude):** *"Refatore a camada de persistência do NexlifyStreamlit implementando o padrão Unit of Work com SQLAlchemy. O UoW deve ser um context manager que garanta atomicidade ACID. Crie uma BaseRepository que receba a conexão por injeção de dependência."*
+> **Prompt usado (Claude):** _"Refatore a camada de persistência do NexlifyStreamlit implementando o padrão Unit of Work com SQLAlchemy. O UoW deve ser um context manager que garanta atomicidade ACID. Crie uma BaseRepository que receba a conexão por injeção de dependência."_
 >
 > **Resultado:** O Claude gerou a estrutura completa em uma única iteração, incluindo o tratamento de `StopException` — algo que eu não havia solicitado explicitamente, mas que demonstrou compreensão profunda do ecossistema Streamlit.
 
@@ -242,9 +254,9 @@ CREATE TABLE IF NOT EXISTS fab_pedidos (
 
 **Decisões de design tomadas:**
 
-1.  **`CHECK` constraints** no banco, não no código Python — garante integridade independente da UI.
-2.  **Normalização via `traco_id` como Foreign Key** — um elemento de catálogo aponta para uma receita, evitando duplicação de dados químicos.
-3.  **Prefixo `fab_`** — isola o namespace das tabelas industriais das tabelas administrativas (usuários, permissões), permitindo convivência no mesmo banco SQLite.
+1. **`CHECK` constraints** no banco, não no código Python — garante integridade independente da UI.
+2. **Normalização via `traco_id` como Foreign Key** — um elemento de catálogo aponta para uma receita, evitando duplicação de dados químicos.
+3. **Prefixo `fab_`** — isola o namespace das tabelas industriais das tabelas administrativas (usuários, permissões), permitindo convivência no mesmo banco SQLite.
 
 ### 4.2. Integração no Unit of Work
 
@@ -278,7 +290,7 @@ JOIN   fab_catalogo_elementos e  ON p.elemento_id    = e.id
 LEFT JOIN fab_tracos_padrao t    ON p.traco_usado_id  = t.id
 ```
 
-> **Prompt usado (Claude):** *"Crie um FabricaRepository estendendo BaseRepository, com métodos CRUD para todas as 5 tabelas fab_. O get_all_pedidos deve retornar dados denormalizados com JOINs para exibição direta no dashboard."*
+> **Prompt usado (Claude):** _"Crie um FabricaRepository estendendo BaseRepository, com métodos CRUD para todas as 5 tabelas fab_. O get_all_pedidos deve retornar dados denormalizados com JOINs para exibição direta no dashboard."_
 >
 > **Resultado:** O Claude gerou o repositório com **todas as queries corretas** na primeira iteração, incluindo o `LEFT JOIN` para pedidos sem traço definido — um detalhe sutil que evitaria erros em pedidos pendentes.
 
@@ -345,9 +357,9 @@ A função retorna um dicionário completo com `materiais_por_m3`, `custo_estima
 
 A função simula um **agente especialista em redução de custos**:
 
-1.  **Reduz** o consumo de cimento em 8% (`consumo * 0.92`)
-2.  **Compensa** a perda de trabalhabilidade adicionando superplastificante (0.8%)
-3.  **Recalcula** o custo total e retorna a "Economia Líquida" gerada
+1. **Reduz** o consumo de cimento em 8% (`consumo * 0.92`)
+2. **Compensa** a perda de trabalhabilidade adicionando superplastificante (0.8%)
+3. **Recalcula** o custo total e retorna a "Economia Líquida" gerada
 
 ```python
 # Estratégia de otimização codificada
@@ -356,7 +368,7 @@ aditivo_compensacao = consumo_original * 0.008       # +0.8% de superplastifican
 economia = custo_original - custo_otimizado          # Economia real em R$
 ```
 
-> **Prompt usado (Gemini):** *"Crie um módulo ai_concreto.py que simule uma IA de engenharia de concreto. A função sugerir_traco deve receber FCK e Slump e retornar um traço completo com justificativa técnica. Use algoritmos determinísticos com fatores de aleatoriedade para simular variação de um LLM."*
+> **Prompt usado (Gemini):** _"Crie um módulo ai_concreto.py que simule uma IA de engenharia de concreto. A função sugerir_traco deve receber FCK e Slump e retornar um traço completo com justificativa técnica. Use algoritmos determinísticos com fatores de aleatoriedade para simular variação de um LLM."_
 >
 > **Resultado:** O Gemini gerou a estrutura base corretamente, mas a fórmula da Lei de Abrams teve que ser **ajustada manualmente** para ficar dentro de faixas técnicas realistas. A justificativa textual gerada foi de excelente qualidade.
 
@@ -364,7 +376,7 @@ economia = custo_original - custo_otimizado          # Economia real em R$
 
 ## 6. Fase 4 — Frontend e Gestão de Estado (Streamlit)
 
-A escolha do Streamlit trouxe velocidade de desenvolvimento, mas impôs um desafio técnico severo: **o ciclo de vida da aplicação**. O Streamlit é fundamentalmente *stateless* — o script inteiro roda novamente a cada interação do usuário.
+A escolha do Streamlit trouxe velocidade de desenvolvimento, mas impôs um desafio técnico severo: **o ciclo de vida da aplicação**. O Streamlit é fundamentalmente _stateless_ — o script inteiro roda novamente a cada interação do usuário.
 
 ### 6.1. O Problema da "Amnésia da IA"
 
@@ -442,7 +454,7 @@ def get_allowed_roles_for_page(page_filename: str) -> List[str]:
     return role_list
 ```
 
-**Técnica:** O middleware intercepta o carregamento da página, captura o nome do arquivo (`Path(__file__).name`), consulta a tabela `permissoes` e, se o usuário não tiver a *role* necessária, invoca `st.stop()` — impedindo acesso mesmo por URL direta.
+**Técnica:** O middleware intercepta o carregamento da página, captura o nome do arquivo (`Path(__file__).name`), consulta a tabela `permissoes` e, se o usuário não tiver a _role_ necessária, invoca `st.stop()` — impedindo acesso mesmo por URL direta.
 
 ### 7.2. Suíte de Testes Automatizados
 
@@ -492,9 +504,9 @@ A pasta `instalacao/` contém **ferramentas GUI** criadas com Tkinter para facil
 
 ### Prompts Que Funcionaram Bem
 
-> **Prompt efetivo 1:** *"Crie uma página Streamlit para gestão de pedidos de concreto. O formulário deve ter selects dinâmicos que busquem clientes, elementos e traços do banco via UnitOfWork. Ao salvar, valide campos obrigatórios e exiba toast de sucesso."*
+> **Prompt efetivo 1:** _"Crie uma página Streamlit para gestão de pedidos de concreto. O formulário deve ter selects dinâmicos que busquem clientes, elementos e traços do banco via UnitOfWork. Ao salvar, valide campos obrigatórios e exiba toast de sucesso."_
 >
-> **Prompt efetivo 2:** *"Implemente o padrão RBAC baseado em banco de dados. O middleware deve capturar Path(__file__).name, consultar a tabela de permissões e fazer st.stop() se o perfil não tiver acesso."*
+> **Prompt efetivo 2:** _"Implemente o padrão RBAC baseado em banco de dados. O middleware deve capturar Path(**file**).name, consultar a tabela de permissões e fazer st.stop() se o perfil não tiver acesso."_
 
 ---
 
@@ -528,9 +540,9 @@ Os agentes inicialmente geraram código onde variáveis eram declaradas fora do 
 
 ### 9.4. O Que Seria Feito Diferente
 
-1.  **Prompts mais específicos para fórmulas de engenharia** — incluir referências de normas técnicas (ABNT NBR) diretamente no prompt.
-2.  **Validação incremental** — testar a saída de cada função gerada antes de pedir a próxima, em vez de gerar módulos inteiros de uma vez.
-3.  **Usar o Claude para toda a lógica de negócio** — o Claude demonstrou melhor compreensão contextual do domínio, enquanto o Gemini foi mais adequado para UI.
+1. **Prompts mais específicos para fórmulas de engenharia** — incluir referências de normas técnicas (ABNT NBR) diretamente no prompt.
+2. **Validação incremental** — testar a saída de cada função gerada antes de pedir a próxima, em vez de gerar módulos inteiros de uma vez.
+3. **Usar o Claude para toda a lógica de negócio** — o Claude demonstrou melhor compreensão contextual do domínio, enquanto o Gemini foi mais adequado para UI.
 
 ---
 
