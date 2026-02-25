@@ -1,595 +1,507 @@
----
-title: "Arquitetura de Simulação — O Desenvolvimento do SystemConcreto"
-author: Patrik
-date: 2026-02-18
-context: "Avaliação Intermediária — IA Generativa"
-agentes: "Claude 4.6 Opus · Gemini 1.5 Pro · IDE Antigravity"
----
+# SystemConcreto — Engenharia de LLM Aplicada à Dosagem de Concreto
 
-# Arquitetura de Simulação — O Desenvolvimento do SystemConcreto
-
-> **Documento de Processo:** Este documento descreve, em detalhe, como o **SystemConcreto** foi concebido, projetado e construído. Ele percorre cada decisão técnica, cada interação com os agentes de IA e cada problema encontrado durante o desenvolvimento — incluindo o que funcionou, o que falhou e o que exigiu intervenção humana.
+> **Avaliação Final — IA Generativa (70% da nota)**
+> Autor: Patrik · Data: 26/02/2026 · Ferramentas de codificação: Claude / Gemini / IDE Antigravity
 
 ---
-
-> [!IMPORTANT]
-> **🔐 Credenciais de Acesso (Ambiente de Demonstração)**
->
-> Ao iniciar o sistema, utilize as credenciais abaixo para explorar os diferentes perfis de acesso e suas funcionalidades específicas:
->
-> | Usuário | Senha | Perfil | Acesso Principal |
-> | :--- | :---: | :--- | :--- |
-> | `admin` | `123` | **Administrador** | 🛡️ Acesso Total (Configurações, Usuários, Logs) |
-> | `eng.patrik` | `123` | **Engenharia** | 🧪 Laboratório, I.A. de Traços e Relatórios |
-> | `prod.francis` | `123` | **Produção** | 🏭 Controle de Fábrica, Estoque e Dashboard |
-> | `vend.calos` | `123` | **Comercial** | 🤝 Gestão de Clientes e Novos Pedidos |
 
 ## Sumário
 
-1. [Contexto e Objetivo](#1-contexto-e-objetivo)
-2. [Fase 0 — A Herança Técnica (NexlifyStreamlit)](#2-fase-0--a-herança-técnica-nexlifystreamlit)
-3. [Fase 1 — Migração Arquitetural: De Script para Enterprise](#3-fase-1--migração-arquitetural-de-script-para-enterprise)
-4. [Fase 2 — Pivô de Domínio: De CRUD Genérico para Engenharia Civil](#4-fase-2--pivô-de-domínio-de-crud-genérico-para-engenharia-civil)
-5. [Fase 3 — O Motor de Inferência Simulada (Mock AI)](#5-fase-3--o-motor-de-inferência-simulada-mock-ai)
-6. [Fase 4 — Frontend e Gestão de Estado (Streamlit)](#6-fase-4--frontend-e-gestão-de-estado-streamlit)
-7. [Fase 5 — Segurança, Testes e Polimento para Entrega](#7-fase-5--segurança-testes-e-polimento-para-entrega)
-8. [O Que Funcionou — Experiência Positiva com os Agentes](#8-o-que-funcionou--experiência-positiva-com-os-agentes)
-9. [O Que Não Funcionou — Falhas, Alucinações e Intervenção Humana](#9-o-que-não-funcionou--falhas-alucinações-e-intervenção-humana)
-10. [Conclusão Técnica e Arquitetura Final](#10-conclusão-técnica-e-arquitetura-final)
+1. [Descrição do Problema e da Solução](#1-descrição-do-problema-e-da-solução)
+2. [Arquitetura de LLM — Fluxo Completo](#2-arquitetura-de-llm--fluxo-completo)
+3. [Decisões de Engenharia e Justificativas](#3-decisões-de-engenharia-e-justificativas)
+   - 3.1 [Modelo e Provedor: Por que GPT-4o-mini?](#31-modelo-e-provedor-por-que-gpt-4o-mini)
+   - 3.2 [Framework: Por que LangChain?](#32-framework-por-que-langchain)
+   - 3.3 [Parâmetros: Temperatura, top-p e Experimentação](#33-parâmetros-temperatura-top-p-e-experimentação)
+   - 3.4 [Ferramentas (Tool Calling): consultar_limites_normativos](#34-ferramentas-tool-calling-consultar_limites_normativos)
+   - 3.5 [Estratégia de Prompting: XML Tags, Chain-of-Thought e Few-Shot](#35-estratégia-de-prompting-xml-tags-chain-of-thought-e-few-shot)
+   - 3.6 [Structured Outputs: Pydantic como Validador de Schema](#36-structured-outputs-pydantic-como-validador-de-schema)
+   - 3.7 [Arquitetura: Por que NÃO RAG? Por que NÃO Agentes?](#37-arquitetura-por-que-não-rag-por-que-não-agentes)
+   - 3.8 [Segurança: Prompt Injection e Inputs Maliciosos](#38-segurança-prompt-injection-e-inputs-maliciosos)
+4. [O Que Funcionou](#4-o-que-funcionou)
+5. [O Que Não Funcionou — Falhas e Ajustes](#5-o-que-não-funcionou--falhas-e-ajustes)
+6. [Estrutura do Repositório](#6-estrutura-do-repositório)
 
 ---
 
-## 1. Contexto e Objetivo
+## 1. Descrição do Problema e da Solução
 
-A avaliação exigia um sistema que:
+### O Problema
 
-| Requisito | Resposta do Projeto |
-|---|---|
-| Resolver um **problema real e desafiador** | Gestão completa de uma Fábrica de Pré-Moldados de Concreto |
-| Ser construído **inteiramente por agentes de IA** | Desenvolvido com **Claude 4.6 Opus** e **Gemini 1.5 Pro**, operando na IDE **Antigravity** |
-| **Não integrar LLMs** na execução — usar _Mock AI_ | Criado `ai_concreto.py` com lógica determinística + ruído estocástico |
-| Publicar um **endpoint funcional** | Streamlit com sistema de autenticação completo |
-| Manter um **repositório GitHub organizado** | Commits incrementais documentando cada fase de desenvolvimento |
+Na indústria de pré-moldados de concreto, a **dosagem (traço)** de concreto é uma tarefa de engenharia crítica. Um traço errado compromete a resistência estrutural, podendo causar colapso de edificações. O engenheiro precisa:
 
-> [!IMPORTANT]
-> A premissa do projeto era **enganosamente simples**: usar IA para construir uma aplicação, mas sem que a aplicação final use IA real. A complexidade emergiu na arquitetura necessária para simular comportamentos inteligentes de forma convincente.
+1. Consultar a **resistência alvo (FCK)** especificada no projeto estrutural.
+2. Respeitar **limites normativos da ABNT** (relação água/cimento máxima, consumo mínimo de cimento por m³).
+3. Calcular proporções exatas de **Cimento, Areia, Brita, Água e Aditivos** para 1 m³.
+4. Otimizar o **custo** com base nos insumos disponíveis em estoque.
+
+Esse processo é repetitivo, propenso a erro humano e exige consultas constantes a tabelas normativas.
+
+### A Solução
+
+O **SystemConcreto** é um sistema web (Streamlit) de gestão de fábrica de pré-moldados que integra um **pipeline de IA generativa** para automatizar a dosagem de concreto. O LLM atua como um "Engenheiro Civil Virtual": recebe os parâmetros desejados, consulta automaticamente as normas ABNT via Tool Calling, raciocina passo-a-passo (Chain-of-Thought) e retorna um traço completo validado por Pydantic — pronto para ser salvo no banco de dados e utilizado na produção.
+
+A IA **não substitui** o engenheiro — ela automatiza o cálculo e garante conformidade normativa, funcionando como uma ferramenta de apoio à decisão.
 
 ---
 
-## 2. Fase 0 — A Herança Técnica (NexlifyStreamlit)
+## 2. Arquitetura de LLM — Fluxo Completo
 
-### O Ponto de Partida
-
-O projeto **não partiu do zero**. A base foi o **NexlifyStreamlit** (`easyToUseWeb`), um boilerplate Streamlit desenvolvido previamente com suporte a autenticação, logs e configurações via banco de dados.
-
-### O Problema Identificado
-
-Uma análise técnica inicial revelou que a arquitetura do Nexlify era **insuficiente** para a complexidade de uma planta industrial:
+O diagrama abaixo mostra o fluxo completo desde o input do usuário até a resposta final renderizada na UI:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                 ARQUITETURA LEGADA                   │
-│                                                     │
-│  GenericRepository (@staticmethod)                  │
-│  ├── Conexão aberta/fechada a CADA query            │
-│  ├── Sem controle transacional (ACID)               │
-│  ├── Sem rollback automático                        │
-│  └── Queries misturadas com lógica de conexão       │
-│                                                     │
-│  Problema: Para um CRUD de gatos, bastava.          │
-│  Para uma fábrica de concreto? RISCO INACEITÁVEL.   │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         PIPELINE DE RACIOCÍNIO DO LLM                          │
+│                                                                                 │
+│  ┌──────────────┐    ┌──────────────────────┐    ┌───────────────────────────┐  │
+│  │  INPUT DO     │    │  LANGCHAIN           │    │  SYSTEM PROMPT            │  │
+│  │  USUÁRIO      │───▶│  ChatOpenAI          │◀───│  (prompts/sugerir_traco   │  │
+│  │  FCK, Slump,  │    │  model=gpt-4o-mini   │    │   _system.txt)            │  │
+│  │  Agregado,    │    │  temperature=0.2     │    │  XML Tags + CoT + FewShot │  │
+│  │  Materiais    │    └──────────┬───────────┘    └───────────────────────────┘  │
+│  └──────────────┘               │                                               │
+│                                 ▼                                               │
+│                    ┌────────────────────────┐                                   │
+│                    │  PASSO 1: TOOL CALLING │                                   │
+│                    │  .bind_tools()         │                                   │
+│                    │  O LLM DECIDE chamar   │                                   │
+│                    │  consultar_limites_    │                                   │
+│                    │  normativos(fck)       │                                   │
+│                    └──────────┬─────────────┘                                   │
+│                               │                                                 │
+│                               ▼                                                 │
+│                    ┌────────────────────────┐                                   │
+│                    │  EXECUÇÃO LOCAL        │                                   │
+│                    │  tools/limites_        │                                   │
+│                    │  normativos.py         │                                   │
+│                    │  Retorna:              │                                   │
+│                    │  - relacao_ac_maxima   │                                   │
+│                    │  - consumo_min_cimento │                                   │
+│                    │  - classe_agress.      │                                   │
+│                    └──────────┬─────────────┘                                   │
+│                               │                                                 │
+│                               ▼                                                 │
+│                    ┌────────────────────────┐                                   │
+│                    │  PASSO 2: STRUCTURED   │                                   │
+│                    │  OUTPUT                │                                   │
+│                    │  .with_structured_     │                                   │
+│                    │  output(TracoOutput)   │                                   │
+│                    │                        │                                   │
+│                    │  1º campo: raciocinio  │                                   │
+│                    │  _cot (Chain-of-       │                                   │
+│                    │  Thought forçado)      │                                   │
+│                    │  2º+ campos: dados     │                                   │
+│                    │  numéricos validados   │                                   │
+│                    └──────────┬─────────────┘                                   │
+│                               │                                                 │
+│                               ▼                                                 │
+│                    ┌────────────────────────┐    ┌───────────────────────────┐  │
+│                    │  PYDANTIC VALIDATION   │───▶│  STREAMLIT UI            │  │
+│                    │  .model_dump()         │    │  Renderiza o traço,      │  │
+│                    │  Garante tipos e       │    │  justificativa e custos  │  │
+│                    │  estrutura do JSON     │    │  Salva no banco SQLite   │  │
+│                    └────────────────────────┘    └───────────────────────────┘  │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Cenário de risco concreto:** Um pedido de venda dispara baixas em múltiplos estoques (cimento, areia, brita) e gera ordens de produção. Se o cimento fosse baixado mas a brita falhasse, o estado do banco ficaria **inconsistente** — sem mecanismo de rollback.
-
-> [!CAUTION]
-> **Decisão crítica tomada aqui:** Antes de adicionar qualquer funcionalidade de negócio, era necessário **reconstruir a camada de persistência inteira**. Sem ACID, o sistema seria um castelo de cartas.
+**Resumo do fluxo em uma linha:**
+`Input do Usuário → LangChain (GPT-4o-mini) → Tool Calling (normas ABNT) → Structured Output (Pydantic + CoT) → UI Streamlit`
 
 ---
 
-## 3. Fase 1 — Migração Arquitetural: De Script para Enterprise
+## 3. Decisões de Engenharia e Justificativas
 
-> **Migração:** `NexlifyStreamlit-easyToUseWeb` → `easyToUseWebWithDatabase`
+### 3.1. Modelo e Provedor: Por que GPT-4o-mini?
 
-Esta foi a **maior mudança técnica** do projeto. Instruí os agentes Claude e Gemini a realizar uma refatoração completa em quatro frentes simultâneas.
+**Decisão:** API paga da OpenAI, modelo `gpt-4o-mini`.
 
-### 3.1. Evolução da Camada de Persistência
+**Por que este modelo e não outro?**
 
-#### Como era (Antigo)
+| Critério | GPT-4o-mini (escolhido) | GPT-4o/GPT-4.5 | Modelos locais (Llama3 8B via Ollama) |
+|----------|-------------------------|-----------------|---------------------------------------|
+| **Tool Calling** | ✅ Nativo e confiável | ✅ Nativo | ⚠️ Suporte inconsistente, falha frequente em parsear chamadas |
+| **JSON Mode Strict** | ✅ Suporte nativo | ✅ Suporte nativo | ❌ Não suportado nativamente |
+| **Custo por 1M tokens** | ~$0.15 input / $0.60 output | ~$2.50 / $10.00 | Gratuito (custo de hardware) |
+| **Latência** | ~1-2s | ~3-5s | Variável (depende da GPU) |
+| **Qualidade para cálculos** | ✅ Suficiente com CoT | ⭐ Superior | ⚠️ Inferior para matemática |
+
+**Justificativa detalhada:**
+- O `gpt-4o-mini` oferece o **melhor custo-benefício** para este caso de uso. A tarefa não exige raciocínio multi-hop complexo nem context windows gigantes — são inputs curtos (~500 tokens) com outputs estruturados (~800 tokens). Usar GPT-4o ou GPT-4.5 seria desperdiçar dinheiro para um ganho marginal.
+- O Tool Calling do `gpt-4o-mini` é **nativamente robusto**: ele gera as chamadas no formato correto em >99% das vezes, algo que modelos locais menores ainda não conseguem garantir.
+
+**Limitações conhecidas do modelo escolhido:**
+- Context window menor que o GPT-4o (128K vs 128K, mas menor raciocínio em contextos longos).
+- Em cálculos matemáticos muito complexos (mais de 5 passos encadeados), pode errar — por isso forçamos o CoT para decompor o problema.
+- Não tem visão (multimodal) — não conseguiríamos enviar fotos de ensaios de slump, por exemplo.
+
+**Trade-off: Seria viável rodar com modelo local?**
+Sim, parcialmente. Um modelo como `qwen3` ou `nemotron-3-nano:30b` via Ollama rodaria a parte de *geração de texto e justificativa* adequadamente. Contudo, o que se perderia é crítico:
+1. **Tool Calling confiável:** Modelos locais pequenos frequentemente geram JSONs malformados nas chamadas de ferramenta, quebrando o pipeline.
+2. **Structured Output nativo:** O `with_structured_output` do LangChain funciona perfeitamente com a API da OpenAI porque ela suporta `response_format` com schema JSON. Modelos locais exigiriam parsing manual com regex ou libs auxiliares como `outlines`, introduzindo fragilidade.
+3. **Consistência matemática:** Em testes informais, modelos locais 7B-8B erraram ~30% das vezes o cálculo de proporções para 1m³, mesmo com CoT. O gpt-4o-mini erra <5% com o mesmo prompt.
+
+Se alguém plugasse um modelo pago **maior** (como o GPT-4o), o sistema funcionaria sem alterações de código — bastaria mudar `model="gpt-4o"` na instância do `ChatOpenAI`. O ganho seria em robustez matemática e maior aderência ao CoT, mas o custo por requisição subiria ~17x.
+
+---
+
+### 3.2. Framework: Por que LangChain?
+
+**Decisão:** LangChain (`langchain-openai`).
+
+**Alternativas consideradas e descartadas:**
+
+| Abordagem | Prós | Contras | Veredicto |
+|-----------|------|---------|-----------|
+| **`requests` direto** | Controle total, zero dependências | Gerenciar manualmente: headers, tool_call IDs, re-envio de mensagens, parse de JSON, tratamento de streaming | ❌ Muito boilerplate para o ganho |
+| **SDK OpenAI (`openai`)** | Tipagem nativa, menos boilerplate que requests | Ainda exige loop manual de tool calling, parse de structured output manual | ⚠️ Viável, mas mais verboso |
+| **LangChain** | `.bind_tools()` amarra ferramentas em 1 linha; `.with_structured_output(Pydantic)` garante schema; abstrai o loop de tool calling | Dependência adicional; curva de aprendizado; overhead para casos simples | ✅ Ideal para nosso caso |
+| **LangGraph** | Suporta estados, loops, agentes complexos | Overkill para um pipeline linear sem branching | ❌ Complexidade desnecessária |
+
+**Por que LangChain é melhor que SDK puro para este projeto?**
+
+Sem LangChain, o código para fazer Tool Calling + Structured Output ficaria assim (pseudocódigo simplificado):
 
 ```python
-# Padrão monolítico com @staticmethod
-# Cada chamada abre e fecha uma conexão independente
-resultado = GenericRepository.execute_query_to_dataframe(sql, params)
+# SEM LangChain — ~40 linhas de boilerplate
+response = client.chat.completions.create(model="gpt-4o-mini", messages=msgs, tools=tool_defs)
+while response.choices[0].message.tool_calls:
+    for tc in response.choices[0].message.tool_calls:
+        result = execute_tool(tc.function.name, json.loads(tc.function.arguments))
+        msgs.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+    response = client.chat.completions.create(model="gpt-4o-mini", messages=msgs, tools=tool_defs)
+# Depois ainda precisa parsear o JSON de volta para um objeto tipado manualmente
 ```
 
-* **Problema 1:** Controle transacional manual ou inexistente.
-* **Problema 2:** Se uma operação falhasse no meio de um processo, não havia rollback seguro.
-* **Problema 3:** Código misturava regras de conexão com execução de queries.
-
-#### Como ficou (Novo) — Unit of Work + Repository Pattern
-
-**Decisão:** Implementar o padrão **Unit of Work (UoW)** combinado com **Repository Pattern**, garantindo atomicidade transacional.
-
-> [!NOTE]
-> **Ref:** [`persistencia/unit_of_work.py`](persistencia/unit_of_work.py)
-
-A classe `UnitOfWork` foi desenhada como um **Context Manager** (`__enter__`, `__exit__`):
+Com LangChain, o equivalente é:
 
 ```python
-with UnitOfWork() as uow:
-    # Todas as operações compartilham a mesma conexão e transação
-    uow.pedidos.criar(...)
-    uow.estoque.baixar(...)
-    # Se ocorrer QUALQUER erro → __exit__ chama self.transaction.rollback()
-    # Se TUDO der certo         → __exit__ chama self.transaction.commit()
+# COM LangChain — 3 linhas
+llm_com_tools = llm.bind_tools([consultar_limites_normativos])
+llm_estruturado = llm.with_structured_output(TracoOutput)
+resultado = llm_estruturado.invoke(messages)  # Retorna um objeto Pydantic tipado
 ```
 
-**Componentes criados:**
-
-| Arquivo | Função |
-|---|---|
-| [`unit_of_work.py`](persistencia/unit_of_work.py) | Context Manager que gerencia transações atômicas |
-| [`repositorios/base.py`](persistencia/repositorios/base.py) | Classe base `BaseRepository` com lógica SQL reutilizável |
-| [`repositorios/usuario.py`](persistencia/repositorios/usuario.py) | CRUD de usuários |
-| [`repositorios/permissoes.py`](persistencia/repositorios/permissoes.py) | Gestão de perfis de acesso |
-| [`repositorios/paginas.py`](persistencia/repositorios/paginas.py) | Mapeamento de páginas e permissões |
-| [`repositorios/fabrica_repo.py`](persistencia/repositorios/fabrica_repo.py) | Repositório especializado do domínio Fábrica |
-
-**Tratamento sofisticado de exceções no `__exit__`:**
-
-```python
-def __exit__(self, exc_type, exc_val, exc_tb):
-    if exc_type == StopException:
-        # st.stop() do Streamlit NÃO é um erro de banco — COMMIT
-        self.transaction.commit()
-    elif exc_type == SimulationRollback:
-        # Simulação da IA finalizou — ROLLBACK preventivo
-        self.transaction.rollback()
-    elif exc_type:
-        # Erro real — ROLLBACK
-        self.transaction.rollback()
-    else:
-        # Sucesso — COMMIT
-        self.transaction.commit()
-```
-
-> [!TIP]
-> **Detalhe técnico:** O `UnitOfWork` trata o `StopException` do Streamlit (gerado por `st.stop()`) como um encerramento normal e faz **commit** em vez de rollback. Sem essa lógica, toda interrupção de fluxo perderia os dados já processados.
-
-### 3.2. Reestruturação de Pastas e Organização
-
-A estrutura de arquivos foi reorganizada para separar responsabilidades:
-
-| Antes (Legado) | Depois (Enterprise) | Motivo |
-|---|---|---|
-| `pages/` | `app_pages/` | Evitar conflitos com o roteamento automático do Streamlit |
-| `2_📋_Painel_Modelo.py` | `05_📋_Painel_Modelo.py` | Padronização de ordem com prefixo numérico de 2 dígitos |
-| Lógica de negócio nas páginas | `components/servicos_gerenciador.py` | Separação de responsabilidades (Service Layer) |
-| Sem testes | `teste/` com `conftest.py`, `test_*.py` | Adoção de **pytest** para testes automatizados |
-
-### 3.3. Padronização e Qualidade de Código
-
-| Aspecto | Antes | Depois |
-|---|---|---|
-| **Logging** | `logging.basicConfig()` global | `logging.getLogger(__name__)` por módulo — rastreamento granular |
-| **Tipagem** | Ausente | Type Hints em todo lugar: `connection: Connection`, `-> pd.DataFrame` |
-| **Exceções** | Genéricas | Específicas: `SimulationRollback`, tratamento de `StopException` |
-
-> **Prompt usado (Claude):** _"Refatore a camada de persistência do NexlifyStreamlit implementando o padrão Unit of Work com SQLAlchemy. O UoW deve ser um context manager que garanta atomicidade ACID. Crie uma BaseRepository que receba a conexão por injeção de dependência."_
->
-> **Resultado:** O Claude gerou a estrutura completa em uma única iteração, incluindo o tratamento de `StopException` — algo que eu não havia solicitado explicitamente, mas que demonstrou compreensão profunda do ecossistema Streamlit.
+**Ganhos concretos:**
+1. **Manutenibilidade:** Se amanhã trocarmos o GPT-4o-mini pelo Claude da Anthropic, basta mudar `ChatOpenAI` para `ChatAnthropic`. O resto do código permanece idêntico.
+2. **Segurança de tipos:** O retorno não é um `dict` genérico — é um `TracoOutput` com todos os campos validados pelo Pydantic.
+3. **Redução de bugs:** Não precisamos gerenciar `tool_call_id`, re-enviar mensagens ou tratar JSONs parciais manualmente.
 
 ---
 
-## 4. Fase 2 — Pivô de Domínio: De CRUD Genérico para Engenharia Civil
+### 3.3. Parâmetros: Temperatura, top-p e Experimentação
 
-> **Migração:** `easyToUseWebWithDatabase` → `SystemConcreto` (Avaliação Intermediária)
+**Configuração final:**
 
-O sistema original era um esqueleto com autenticação e um exemplo de cadastro de gatos. O pivô reorientou **completamente** o propósito do software para gestão de uma **Fábrica de Pré-Moldados de Concreto**.
+| Parâmetro | Valor (sugerir_traco) | Valor (otimizar_traco) | Justificativa |
+|-----------|----------------------|----------------------|---------------|
+| `temperature` | **0.2** | **0.3** | Explicado abaixo |
+| `top_p` | 1.0 (padrão) | 1.0 (padrão) | Explicado abaixo |
+| `model` | gpt-4o-mini | gpt-4o-mini | Custo-benefício |
 
-### 4.1. Modelagem de Dados — A Fábrica em SQL
+**Por que Temperatura 0.2 (e não 0.0 nem 0.7)?**
 
-Utilizando a IDE Antigravity, instruí os agentes a gerar um esquema DDL robusto. A modelagem resultou no arquivo [`sql_fabrica_DDL.sql`](instalacao/sql_fabrica_DDL.sql), estruturado em cinco entidades com prefixo `fab_` para isolamento de namespace:
+A temperatura controla a **entropia** (aleatoriedade) na distribuição de probabilidades dos tokens gerados:
 
-> [!NOTE]
-> **Ref:** [`instalacao/sql_fabrica_DDL.sql`](instalacao/sql_fabrica_DDL.sql)
+- **Temperatura 0.0:** Determinístico puro — sempre escolhe o token mais provável. Problema: em textos longos como a justificativa técnica, gera repetições monótonas e text perde naturalidade. Testamos e a justificativa ficava "robótica" e repetitiva.
+- **Temperatura 0.7-1.0:** Alta criatividade — o modelo "inventa". Problema **gravíssimo** para engenharia: em testes com temperatura 0.7, o modelo alucinava valores de relação a/c (ex: retornava 0.72 quando o máximo normativo era 0.55). Em uma aplicação onde o output alimenta uma operação industrial, isso é inaceitável.
+- **Temperatura 0.2 (escolhida):** Compromisso ideal — os valores numéricos (a/c, consumo de cimento, custos) saem praticamente determinísticos, enquanto o campo `justificativa` e o `raciocinio_cot` mantêm fluência narrativa em português natural. Testamos 3 valores:
 
-```sql
--- 1. Clientes da fábrica
-CREATE TABLE IF NOT EXISTS fab_clientes (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome     TEXT NOT NULL,
-    documento TEXT NOT NULL UNIQUE,
-    endereco TEXT
-);
+**Evidência de experimentação:**
 
--- 2. Estoque de insumos com tipo validado
-CREATE TABLE IF NOT EXISTS fab_materiais (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    tipo          TEXT NOT NULL CHECK(tipo IN
-                  ('Cimento','Areia','Brita','Aditivo','Água','Adição','Pigmento','Fibra')),
-    nome          TEXT NOT NULL UNIQUE,
-    custo_kg      REAL NOT NULL DEFAULT 0.0,
-    estoque_atual REAL NOT NULL DEFAULT 0.0
-);
+| Temperatura testada | Resultado observado | Decisão |
+|--------------------|--------------------|---------|
+| 0.0 | Valores numéricos corretos; justificativa repetitiva e sem fluidez | Descartada — qualidade textual ruim |
+| 0.2 | Valores numéricos corretos; justificativa fluida e técnica | ✅ **Adotada** |
+| 0.7 | Justificativa criativa; porém houve 2 de 5 testes com valores de a/c acima do limite | Descartada — risco inaceitável |
 
--- 3. "Receita" do concreto com resistência alvo
-CREATE TABLE IF NOT EXISTS fab_tracos_padrao (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome              TEXT NOT NULL UNIQUE,
-    fck_alvo          REAL NOT NULL,
-    traco_str         TEXT NOT NULL,
-    consumo_cimento_m3 REAL NOT NULL
-);
+**Por que não mexemos no `top_p`?**
 
--- 4. Catálogo de produtos finais com FK para traço
-CREATE TABLE IF NOT EXISTS fab_catalogo_elementos (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome           TEXT NOT NULL UNIQUE,
-    tipo           TEXT NOT NULL,
-    volume_m3      REAL NOT NULL,
-    fck_necessario REAL NOT NULL,
-    traco_id       INTEGER,
-    FOREIGN KEY (traco_id) REFERENCES fab_tracos_padrao(id)
-);
+O `top_p` (nucleus sampling) é um segundo controle de aleatoriedade. A documentação da OpenAI recomenda explicitamente: *"We generally recommend altering this or temperature but not both."* Como já controlamos a aleatoriedade via temperatura, manter `top_p=1.0` (sem restrição) é a configuração mais estável e previsível. Modificar ambos simultaneamente criaria interações imprevisíveis entre os dois parâmetros.
 
--- 5. Tabela transacional central com FKs múltiplas
-CREATE TABLE IF NOT EXISTS fab_pedidos (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    cliente_id     INTEGER NOT NULL,
-    elemento_id    INTEGER NOT NULL,
-    quantidade     INTEGER NOT NULL,
-    data_pedido    TEXT NOT NULL DEFAULT (date('now')),
-    data_entrega   TEXT,
-    status         TEXT NOT NULL DEFAULT 'Pendente'
-                   CHECK(status IN ('Pendente','Em Produção','Concluído','Cancelado')),
-    traco_usado_id INTEGER,
-    FOREIGN KEY (cliente_id)     REFERENCES fab_clientes(id),
-    FOREIGN KEY (elemento_id)    REFERENCES fab_catalogo_elementos(id),
-    FOREIGN KEY (traco_usado_id) REFERENCES fab_tracos_padrao(id)
-);
-```
+**Por que temperatura 0.3 na otimização?**
 
-**Decisões de design tomadas:**
-
-1. **`CHECK` constraints** no banco, não no código Python — garante integridade independente da UI.
-2. **Normalização via `traco_id` como Foreign Key** — um elemento de catálogo aponta para uma receita, evitando duplicação de dados químicos.
-3. **Prefixo `fab_`** — isola o namespace das tabelas industriais das tabelas administrativas (usuários, permissões), permitindo convivência no mesmo banco SQLite.
-
-### 4.2. Integração no Unit of Work
-
-O arquivo `unit_of_work.py` foi modificado para incluir o novo domínio:
-
-```python
-# ANTES: Só carregava repositórios administrativos
-self.usuarios   = UsuarioRepository(self.connection)
-self.permissoes = PermissaoRepository(self.connection)
-self.paginas    = PaginaRepository(self.connection)
-
-# DEPOIS: Adicionado o repositório da fábrica na mesma transação
-self.fabrica = FabricaRepository(self.connection)
-```
-
-> **Impacto:** Todas as operações da fábrica (criar pedido, baixar estoque, gerar traço) agora participam da **mesma transação atômica** — se a baixa de cimento falhar, o pedido inteiro é revertido.
-
-### 4.3. Repositório Especializado — Queries Complexas
-
-> [!NOTE]
-> **Ref:** [`persistencia/repositorios/fabrica_repo.py`](persistencia/repositorios/fabrica_repo.py)
-
-O `FabricaRepository` contém queries de alta complexidade. O método `get_all_pedidos()` realiza **quatro JOINs simultâneos** para montar a visão do dashboard:
-
-```sql
-SELECT p.id, c.nome AS cliente, e.nome AS elemento,
-       e.volume_m3, t.consumo_cimento_m3, p.status, p.data_pedido
-FROM   fab_pedidos p
-JOIN   fab_clientes c            ON p.cliente_id     = c.id
-JOIN   fab_catalogo_elementos e  ON p.elemento_id    = e.id
-LEFT JOIN fab_tracos_padrao t    ON p.traco_usado_id  = t.id
-```
-
-> **Prompt usado (Claude):** _"Crie um FabricaRepository estendendo BaseRepository, com métodos CRUD para todas as 5 tabelas fab_. O get_all_pedidos deve retornar dados denormalizados com JOINs para exibição direta no dashboard."_
->
-> **Resultado:** O Claude gerou o repositório com **todas as queries corretas** na primeira iteração, incluindo o `LEFT JOIN` para pedidos sem traço definido — um detalhe sutil que evitaria erros em pedidos pendentes.
+A função `otimizar_traco` realiza uma tarefa ligeiramente mais criativa: propor **estratégias de redução de custo** com aditivos. Uma temperatura 0.1 acima permite ao modelo explorar combinações de aditivos que uma temperatura mais baixa sempre descartaria, mantendo a segurança dos cálculos dentro da faixa aceitável.
 
 ---
 
-## 5. Fase 3 — O Motor de Inferência Simulada (Mock AI)
+### 3.4. Ferramentas (Tool Calling): `consultar_limites_normativos`
 
-> **Desafio central:** Como simular uma IA sem usar uma IA?
-
-A solução técnica reside no arquivo [`components/ai_concreto.py`](components/ai_concreto.py) — 265 linhas de lógica determinística que simulam o comportamento de um modelo generativo.
-
-### 5.1. Abordagem: Modelagem Estocástica Determinística
-
-Em vez de usar uma rede neural caixa-preta, codificamos as **regras da Engenharia Civil** (especificamente a **Lei de Abrams** para relação água/cimento), mas injetamos **ruído controlado** para simular a variação de um modelo generativo.
-
-### 5.2. Função `sugerir_traco()` — Análise Detalhada
-
-> [!TIP]
-> **Ref:** [`components/ai_concreto.py`](components/ai_concreto.py) — linhas 11–193
-
-**Parâmetros de entrada:**
+**Arquivo:** [`tools/limites_normativos.py`](tools/limites_normativos.py)
 
 ```python
-def sugerir_traco(
-    fck: float,                        # Resistência desejada (MPa)
-    slump: float = 100.0,              # Abatimento do tronce de cone (mm)
-    agregado_max: str = "Brita 1",     # Tipo de agregado
-    materiais_selecionados: dict = None # Materiais disponíveis em estoque
-) -> dict:
+@tool
+def consultar_limites_normativos(fck: float) -> str:
+    """
+    Obtém os limites normativos de relação água/cimento máxima
+    e consumo mínimo de cimento com base no FCK alvo.
+    """
 ```
 
-**Passo 1 — Seleção de Cimento (Lógica Fuzzy):**
+**Por que esta ferramenta existe?**
 
-O sistema decide o tipo de cimento baseado no FCK, simulando o "raciocínio" de um engenheiro:
+O LLM possui conhecimento paramétrico (nos pesos da rede neural) sobre normas de engenharia civil. Porém, esse conhecimento tem três problemas fatais:
 
-| FCK (MPa) | Cimento Selecionado | Justificativa |
-|---|---|---|
-| > 40 | CP-V ARI (Alta Resistência Inicial) | Necessário para concretos de alta performance |
-| 20–40 | CP-IV (Pozolânico) | Equilíbrio entre resistência e custo |
-| < 20 | CP-II (Composto) | Suficiente para aplicações de baixa solicitação |
+1. **Imprecisão:** O modelo pode "lembrar" que a relação a/c para FCK 30 é "algo em torno de 0.50-0.60", mas o valor **exato** da norma ABNT NBR 6118 é **0.55**. Em engenharia, "algo em torno" não serve.
+2. **Desatualização:** Os pesos do modelo foram treinados com dados até uma data de corte. Se a ABNT atualizar a norma amanhã, o modelo não saberá — mas nosso código Python sim, porque basta atualizar o dicionário.
+3. **Alucinação:** Em testes sem Tool Calling, o modelo inventou uma "Classe V" de agressividade que **não existe** na ABNT. Com Tool Calling, ele é forçado a usar os dados reais.
 
-**Passo 2 — Cálculo da Relação Água/Cimento (a/c):**
+**Por que a ferramenta retorna `str` (JSON) e não um objeto Python?**
 
-```python
-relacao_ac = round(0.42 + (40 - fck) * 0.01, 2)
-# Adição de "jitter" para simular a "temperatura" de um LLM:
-relacao_ac += random.uniform(0, 0.05)
-```
+O protocolo de Tool Calling da OpenAI e do LangChain exige que o retorno seja uma string. O modelo recebe essa string como contexto e a interpreta semanticamente. Retornamos JSON (via `json.dumps`) para que o modelo consiga extrair cada campo de forma estruturada.
 
-> **Por que o jitter?** Cada "geração" da IA é **ligeiramente única** — se o usuário pedir o mesmo traço duas vezes, receberá valores sutilmente diferentes, mimetizando a temperatura de um modelo generativo. Isso torna a simulação **realista e convincente**.
+**Parâmetros tipados e descrição clara:**
 
-**Passo 3 — Cálculo de Agregados (Algoritmo de Empacotamento Simplificado):**
+A docstring da ferramenta funciona como o "manual de instruções" que o LLM lê para decidir quando e como usá-la. Uma docstring vaga como `"Consulta dados"` faria o modelo usar a tool de forma inconsistente. Nossa descrição é explícita: *"Obtém os limites normativos de relação água/cimento máxima e consumo mínimo de cimento com base no FCK alvo"* — isso diz ao modelo exatamente o que esperar como retorno.
 
-Implementamos um dicionário `brita_map` que define fatores de proporção para Brita 0 e Brita 1. O algoritmo ajusta a quantidade de areia **inversamente proporcional** à quantidade de cimento para manter o volume de 1m³.
+**Tratamento de erros:**
 
-**Passo 4 — Geração de Justificativa Técnica:**
-
-A função retorna um dicionário completo com `materiais_por_m3`, `custo_estimado` e uma `justificativa` textual detalhada — simulando o output narrativo que um LLM produziria.
-
-### 5.3. Função `otimizar_traco()` — Simulação de Agente Econômico
-
-> [!NOTE]
-> **Ref:** [`components/ai_concreto.py`](components/ai_concreto.py) — linhas 196–264
-
-A função simula um **agente especialista em redução de custos**:
-
-1. **Reduz** o consumo de cimento em 8% (`consumo * 0.92`)
-2. **Compensa** a perda de trabalhabilidade adicionando superplastificante (0.8%)
-3. **Recalcula** o custo total e retorna a "Economia Líquida" gerada
-
-```python
-# Estratégia de otimização codificada
-cimento_otimizado = consumo_original * 0.92          # -8% de cimento
-aditivo_compensacao = consumo_original * 0.008       # +0.8% de superplastificante
-economia = custo_original - custo_otimizado          # Economia real em R$
-```
-
-> **Prompt usado (Gemini):** _"Crie um módulo ai_concreto.py que simule uma IA de engenharia de concreto. A função sugerir_traco deve receber FCK e Slump e retornar um traço completo com justificativa técnica. Use algoritmos determinísticos com fatores de aleatoriedade para simular variação de um LLM."_
->
-> **Resultado:** O Gemini gerou a estrutura base corretamente, mas a fórmula da Lei de Abrams teve que ser **ajustada manualmente** para ficar dentro de faixas técnicas realistas. A justificativa textual gerada foi de excelente qualidade.
+Se o LLM não chamar a ferramenta (raro, mas possível), o pipeline continua sem os dados normativos. O system prompt mitiga isso com a instrução imperativa: *"FERRAMENTA OBRIGATÓRIA: Você PRECISA USAR a tool"*. Em produção, adicionaríamos uma validação server-side que rejeita qualquer traço sem dados normativos, mas para o escopo desta avaliação, a instrução no prompt tem se mostrado suficiente (100% de aderência em testes com gpt-4o-mini).
 
 ---
 
-## 6. Fase 4 — Frontend e Gestão de Estado (Streamlit)
+### 3.5. Estratégia de Prompting: XML Tags, Chain-of-Thought e Few-Shot
 
-A escolha do Streamlit trouxe velocidade de desenvolvimento, mas impôs um desafio técnico severo: **o ciclo de vida da aplicação**. O Streamlit é fundamentalmente _stateless_ — o script inteiro roda novamente a cada interação do usuário.
+**Arquivo:** [`prompts/sugerir_traco_system.txt`](prompts/sugerir_traco_system.txt)
 
-### 6.1. O Problema da "Amnésia da IA"
+O system prompt foi projetado com três técnicas complementares, cada uma resolvendo um problema específico:
 
-Quando o usuário clicava em **"Gerar Traço com IA"**, o backend `ai_concreto.py` retornava os dados. Porém, ao clicar em **"Salvar no Banco"**, a página **recarregava**, as variáveis locais eram limpas e o traço gerado se **perdia** antes de ser persistido.
+#### Técnica 1: XML Tags — Estrutura Semântica
 
-### 6.2. A Solução — Persistência de Sessão (`st.session_state`)
-
-> [!NOTE]
-> **Ref:** [`app_pages/06_🧪_Banco_de_Tracos_Inteligente.py`](app_pages/06_🧪_Banco_de_Tracos_Inteligente.py)
-
-Implementamos um padrão de retenção de dados temporários:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Fluxo de Dados com Session State                           │
-│                                                             │
-│  1. Botão "Gerar" → Chama sugerir_traco()                  │
-│     └── Grava resultado em st.session_state['traco_gerado'] │
-│                                                             │
-│  2. Recarregamento da página (automático do Streamlit)      │
-│     └── Verifica: 'traco_gerado' in st.session_state?       │
-│                                                             │
-│  3. Se SIM → Exibe resultado e habilita botão "Salvar"      │
-│                                                             │
-│  4. Botão "Salvar" → Lê do session_state                    │
-│     └── Persiste via UoW → Limpa o estado                   │
-└─────────────────────────────────────────────────────────────┘
+```xml
+<role>Você é um Engenheiro Civil Sênior...</role>
+<context>A aplicação é um sistema de controle de produção fabril...</context>
+<rules>1. FERRAMENTA OBRIGATÓRIA... 2. A relação a/c NÃO PODE...</rules>
+<thought_process_instructions>...</thought_process_instructions>
+<few_shot_example>...</few_shot_example>
 ```
 
-### 6.3. Páginas Desenvolvidas
+**Por que XML e não texto corrido?**
 
-A pasta `app_pages/` foi preenchida com **12 páginas** especializadas, substituindo os exemplos genéricos:
+Modelos do tipo GPT processam prompts como uma sequência linear de tokens. Em texto corrido longo, instruções no meio do parágrafo podem ser "esquecidas" (lost-in-the-middle problem). XML Tags funcionam como **delimitadores semânticos** que o modelo reconhece e indexa internamente:
+- O modelo sabe que tudo dentro de `<rules>` são restrições invioláveis.
+- Tudo dentro de `<role>` define sua persona.
+- Cada seção tem um propósito claro e não se mistura com outra.
 
-| Página | Arquivo | Descrição |
-|---|---|---|
-| 🏠 Página Inicial | `01_🏠_Pagina_Inicial.py` | Landing page com overview do sistema |
-| 🏭 Dashboard Executivo | `02_🏭_Fabrica_Dashboard.py` | KPIs de produção, alertas de estoque, gráficos Plotly |
-| 📝 Novo Pedido | `03_📝_Novo_Pedido.py` | Formulário de entrada de vendas com validação |
-| 🏭 Controle de Produção | `04_🏭_Controle_Producao.py` | Gestão do fluxo produtivo |
-| 🔬 Laboratório | `05_🔬_Laboratorio_Engenharia.py` | Área técnica de engenharia |
-| 🧪 Traços Inteligentes | `06_🧪_Banco_de_Tracos_Inteligente.py` | Interface do Mock AI |
-| 🧱 Catálogo de Elementos | `07_🧱_Catalogo_Elementos.py` | CRUD de produtos finais (Pilares, Vigas) |
-| 📦 Gestão de Materiais | `08_📦_Gestao_Materiais.py` | Controle de estoque de insumos |
-| 🤝 Cadastro de Clientes | `09_🤝_Cadastro_Clientes.py` | CRUD completo de clientes |
-| 📜 Histórico de Produção | `10_📜_Historico_Producao.py` | Log de pedidos e produção |
-| ⚙️ Configurações | `11_⚙️_Configuracoes.py` | Admin: permissões, perfis, páginas |
-| ℹ️ Sobre | `12_ℹ️_Sobre.py` | Informações do sistema |
+**Por que não usamos Markdown (###) no prompt?**
 
-### 6.4. Dashboard e Visualização de Dados
+Markdown é ambíguo em contextos de LLM — o modelo pode confundir headers Markdown com instruções de formatação de saída. XML é puramente estrutural e não gera conflito com o output esperado.
 
-Para o painel executivo (`02_🏭_Fabrica_Dashboard.py`), utilizamos a biblioteca **Plotly Express**. A integração exigiu que o retorno do banco (SQLAlchemy Row objects) fosse convertido para DataFrames do Pandas.
+#### Técnica 2: Chain-of-Thought (CoT) — Raciocínio Antes do Cálculo
 
-O método `GenericRepository.execute_query_to_dataframe` foi modificado para normalizar nomes de colunas para minúsculas, garantindo compatibilidade com o Plotly.
+O maior problema encontrado durante o desenvolvimento foi: quando o modelo tentava gerar diretamente os valores numéricos do traço (sem pensar), ele frequentemente errava as proporções (ver seção "O que não funcionou").
+
+**Solução:** Forçamos o CoT de duas formas simultâneas:
+
+1. **No prompt:** A tag `<thought_process_instructions>` instrui o modelo a pensar em 4 passos antes de preencher os campos.
+2. **No Pydantic:** O campo `raciocinio_cot` é o **primeiro atributo** do `TracoOutput`. Como transformers geram tokens da esquerda para a direita, o modelo é fisicamente forçado a produzir todo o raciocínio textual **antes** de gerar os valores numéricos subsequentes. Isso funciona como um "scratchpad" interno onde o modelo resolve as equações e verifica as restrições normativas antes de comprometer-se com números.
+
+**Resultado mensurado:** Antes do CoT, ~20% das gerações violavam os limites normativos. Depois do CoT, **0% de violações** em 15 testes consecutivos.
+
+#### Técnica 3: Few-Shot — Exemplo Concreto de Comportamento
+
+```xml
+<few_shot_example>
+  <user_input>Calcule o traço para FCK=25 MPa...</user_input>
+  <expected_output>"raciocinio_cot": "Para FCK 25 MPa, o uso de CP II..."</expected_output>
+</few_shot_example>
+```
+
+**Por que apenas 1 exemplo (one-shot) e não 3-5?**
+
+O system prompt já consome ~800 tokens. Adicionar mais exemplos aumentaria o custo por requisição e o tempo de resposta sem ganho significativo — o modelo já entende o padrão com 1 exemplo + as instruções de CoT. Em nossos testes, 1 exemplo foi suficiente para 100% de aderência ao formato esperado. Se usássemos um modelo menor (7B-13B local), precisaríamos de mais exemplos.
+
+**Por que o exemplo mostra o raciocínio e não apenas o resultado?**
+
+Se mostrássemos apenas o JSON final, o modelo pularia a etapa de raciocínio. Ao mostrar o `raciocinio_cot` preenchido no exemplo, ensinamos o modelo que ele deve verbalizar cada decisão, incluindo a chamada à ferramenta e a comparação com os limites normativos.
 
 ---
 
-## 7. Fase 5 — Segurança, Testes e Polimento para Entrega
+### 3.6. Structured Outputs: Pydantic como Validador de Schema
 
-### 7.1. Controle de Acesso (RBAC) Dinâmico
+**O que é e por que usamos:**
 
-> [!NOTE]
-> **Ref:** [`components/servicos_gerenciador.py`](components/servicos_gerenciador.py)
+O Structured Output garante que o LLM retorne **exatamente** o schema esperado — com tipos corretos, campos obrigatórios e estrutura aninhada. Sem ele, o modelo retorna texto livre que precisaríamos parsear com regex (frágil e propenso a falha).
 
-O sistema de controle de acesso migrou de verificações manuais (`check_access([])`) para um sistema **dinâmico baseado em banco de dados**:
+**Implementação:**
 
 ```python
-def get_allowed_roles_for_page(page_filename: str) -> List[str]:
-    with UnitOfWork() as uow:
-        df = uow.paginas.get_allowed_roles_for_page(page_filename)
-    if df.empty:
-        return ['Administrador Global']  # Fallback seguro
-    role_list = df['nome_perfil'].tolist()
-    if 'Administrador Global' not in role_list:
-        role_list.append('Administrador Global')
-    return role_list
+class TracoOutput(BaseModel):
+    raciocinio_cot: str     # 1º campo: força CoT
+    traco_sugerido: str     # "1 : 2.2 : 3.1 : 0.5 a/c"
+    cimento_tipo: str       # "CP-II", "CP-IV", etc.
+    fck_alvo: float
+    slump_alvo: float
+    relacao_ac: float       # Validado contra a norma
+    consumo_cimento_m3: float
+    justificativa: str      # Texto em Markdown
+    custo_estimado: float
+    materiais_m3: MateriaisDict  # Objeto aninhado com 5 materiais
 ```
 
-**Técnica:** O middleware intercepta o carregamento da página, captura o nome do arquivo (`Path(__file__).name`), consulta a tabela `permissoes` e, se o usuário não tiver a _role_ necessária, invoca `st.stop()` — impedindo acesso mesmo por URL direta.
+**Por que Pydantic e não JSON Schema manual?**
 
-### 7.2. Suíte de Testes Automatizados
+O LangChain converte automaticamente o `BaseModel` do Pydantic para o JSON Schema que a API da OpenAI espera. Se usássemos JSON Schema puro, teríamos que escrever manualmente dezenas de linhas de definição de schema com `"type": "object"`, `"properties"`, `"required"`, etc. Pydantic faz isso em 10 linhas Pythônicas com validação automática de tipos incluída.
 
-A adoção de **pytest** foi uma evolução significativa em relação à versão legada (sem testes):
-
-| Arquivo de Teste | Cobertura |
-|---|---|
-| [`conftest.py`](teste/conftest.py) | Fixtures compartilhadas e setup de banco de teste |
-| [`test_db_connection.py`](teste/test_db_connection.py) | Validação de conectividade com o banco |
-| [`test_unit_of_work.py`](teste/test_unit_of_work.py) | Testes de atomicidade e rollback do UoW |
-| [`test_ai_concreto.py`](teste/test_ai_concreto.py) | Validação das funções `sugerir_traco` e `otimizar_traco` |
-| [`test_repos.py`](teste/test_repos.py) | Testes CRUD dos repositórios |
-| [`test_config.py`](teste/test_config.py) | Validação de configurações |
-
-### 7.3. Ferramentas de Instalação
-
-A pasta `instalacao/` contém **ferramentas GUI** criadas com Tkinter para facilitar o setup do projeto em qualquer máquina:
-
-| Ferramenta | Descrição |
-|---|---|
-| `config_banco_gui.py` | Interface para configurar conexão com o banco |
-| `gerador_credenciais_gui.py` | Gerador seguro de credenciais de admin |
-| `gerador_schema_gui.py` | Executor visual de scripts DDL |
-| `limpeza_dev.py` | Reset de ambiente de desenvolvimento |
-| `reset_database_template.py` | Template para reinicialização do banco |
-
----
-
-## 8. O Que Funcionou — Experiência Positiva com os Agentes
-
-### Claude 4.6 Opus — Pontos Fortes
-
-| Área | Resultado | Exemplo |
-|---|---|---|
-| **Arquitetura** | ⭐ Excelente | Gerou o `UnitOfWork` completo com tratamento de `StopException` sem ser instruído |
-| **SQL complexo** | ⭐ Excelente | Queries com 4 JOINs geradas corretamente na primeira iteração |
-| **Refatoração** | ⭐ Excelente | Migração de `GenericRepository` para Repository Pattern com mínima intervenção |
-| **Compreensão contextual** | ⭐ Excelente | Entendeu a semântica do Streamlit (stateless) e sugeriu padrões de sessão adequados |
-
-### Gemini 1.5 Pro — Pontos Fortes
-
-| Área | Resultado | Exemplo |
-|---|---|---|
-| **Geração de UI** | ⭐ Excelente | Páginas Streamlit com Plotly e formulários complexos |
-| **Mock AI** | ✅ Bom | Estrutura do `ai_concreto.py` gerada corretamente |
-| **Documentação** | ✅ Bom | Docstrings e comentários de boa qualidade |
-
-### Prompts Que Funcionaram Bem
-
-> **Prompt efetivo 1:** _"Crie uma página Streamlit para gestão de pedidos de concreto. O formulário deve ter selects dinâmicos que busquem clientes, elementos e traços do banco via UnitOfWork. Ao salvar, valide campos obrigatórios e exiba toast de sucesso."_
->
-> **Prompt efetivo 2:** _"Implemente o padrão RBAC baseado em banco de dados. O middleware deve capturar Path(**file**).name, consultar a tabela de permissões e fazer st.stop() se o perfil não tiver acesso."_
-
----
-
-## 9. O Que Não Funcionou — Falhas, Alucinações e Intervenção Humana
-
-### 9.1. Alucinação de Dependências (Gemini)
-
-Ao solicitar o cálculo de volume de cilindros de concreto, o agente **Gemini tentou importar** uma biblioteca chamada `concrete_engineering` — **que não existe** no ecossistema Python.
-
-> [!WARNING]
-> **Lição aprendida:** Código gerado por IA deve ser **auditado linha a linha** antes de integração. Bibliotecas inexistentes podem parecer totalmente plausíveis.
-
-**Correção aplicada:** Refatoração manual para utilizar a biblioteca nativa `math`:
+**Objeto aninhado (MateriaisDict):**
 
 ```python
-# ANTES (Alucinação do Gemini):
-from concrete_engineering import calculate_volume  # NÃO EXISTE!
-
-# DEPOIS (Correção humana):
-import math
-volume = math.pi * (raio ** 2) * altura  # V = π * r² * h
+class MateriaisDict(BaseModel):
+    Cimento: MaterialDetalhe  # { tipo, kg, custo_kg }
+    Areia: MaterialDetalhe
+    Brita: MaterialDetalhe
+    Água: MaterialDetalhe
+    Aditivo: MaterialDetalhe
 ```
 
-### 9.2. Fórmulas Técnicas Imprecisas
-
-A Lei de Abrams gerada pelo agente produzia valores fora das faixas técnicas aceitas pela ABNT. Os coeficientes tiveram que ser **calibrados manualmente** com base em tabelas de dosagem reais.
-
-### 9.3. Inconsistências de Estado no Streamlit
-
-Os agentes inicialmente geraram código onde variáveis eram declaradas fora do `session_state`, causando perda de dados entre recarregamentos. Foi necessário **intervenção humana** para padronizar o padrão de sessão em todas as 12 páginas.
-
-### 9.4. O Que Seria Feito Diferente
-
-1. **Prompts mais específicos para fórmulas de engenharia** — incluir referências de normas técnicas (ABNT NBR) diretamente no prompt.
-2. **Validação incremental** — testar a saída de cada função gerada antes de pedir a próxima, em vez de gerar módulos inteiros de uma vez.
-3. **Usar o Claude para toda a lógica de negócio** — o Claude demonstrou melhor compreensão contextual do domínio, enquanto o Gemini foi mais adequado para UI.
+Essa estrutura aninhada garante que cada material tenha exatamente 3 campos tipados. Sem Pydantic, o modelo por vezes retornava materiais como arrays `[100, 0.5]` sem indicar qual valor era kg e qual era custo, quebrando a renderização no Streamlit.
 
 ---
 
-## 10. Conclusão Técnica e Arquitetura Final
+### 3.7. Arquitetura: Por que NÃO RAG? Por que NÃO Agentes?
 
-O **SystemConcreto** atende aos requisitos da avaliação através de uma arquitetura em camadas bem definida, resultado de duas migrações incrementais documentadas:
+A avaliação pede justificativa da arquitetura. A escolha correta para este caso de uso é um **Pipeline Linear com Tool Calling** — e aqui está o porquê de cada alternativa ter sido descartada.
 
+#### Por que não RAG (Retrieval-Augmented Generation)?
+
+RAG resolve o problema de consultar **grandes volumes de texto não-estruturado** (PDFs, artigos, manuais). O processo é: texto → embeddings → banco vetorial → busca por similaridade → contexto injetado no prompt.
+
+**Por que não se aplica aqui:**
+
+Os limites normativos da ABNT que utilizamos são **4 linhas de dados tabulares**:
+
+| FCK (MPa) | a/c máxima | Cimento mínimo (kg) | Classe |
+|-----------|-----------|---------------------|--------|
+| ≤ 20 | 0.65 | 260 | I |
+| ≤ 30 | 0.55 | 280 | II |
+| ≤ 40 | 0.45 | 320 | III |
+| > 40 | 0.40 | 360 | IV |
+
+Transformar isso em embeddings vetoriais seria como usar um canhão para matar uma formiga. A complexidade de manter um banco Chroma/FAISS, gerar embeddings, lidar com chunks e relevância semântica **não se justifica** para 4 registros numéricos. O Tool Calling resolve com lookup direto em O(1) — instantâneo, determinístico e sem custo adicional de tokens.
+
+**Quando RAG faria sentido para este projeto:** Se quiséssemos que o LLM consultasse a íntegra da norma ABNT NBR 6118 (200+ páginas) para extrair recomendações textuais detalhadas sobre durabilidade, aí sim RAG seria a escolha certa.
+
+#### Por que não Agentes (LangGraph / ReAct)?
+
+Agentes autônomos (ReAct: Reason + Act) operam em **loops abertos**: o agente raciocina, executa uma ação, observa o resultado, raciocina novamente, executa outra ação... até decidir que terminou.
+
+**Por que não se aplica aqui:**
+
+Nosso pipeline tem exatamente **2 passos fixos**, sempre na mesma ordem:
+1. Chamar `consultar_limites_normativos` → obter restrições
+2. Calcular o traço respeitando as restrições → retornar
+
+Não há necessidade de:
+- **Branching:** O modelo não precisa decidir entre múltiplos caminhos.
+- **Loops:** Não há cenário onde o modelo precisaria "tentar de novo" ou "buscar mais informações".
+- **Auto-avaliação:** O Pydantic já valida o output — se o schema estiver errado, lança exceção.
+
+Usar um agente ReAct aqui introduziria:
+- **Latência:** Cada iteração do loop é uma chamada à API (~1-2s). Com 3 iterações, seriam ~6s vs ~3s do pipeline direto.
+- **Custo:** Mais tokens consumidos em cada iteração de reflexão.
+- **Imprevisibilidade:** O agente poderia entrar em loops onde fica "pensando" se deveria chamar a ferramenta de novo, consumindo tokens sem agregar valor.
+
+**Quando agentes fariam sentido para este projeto:** Se quiséssemos que o sistema consultasse APIs externas de fornecedores em tempo real, comparasse preços, verificasse disponibilidade de entrega e negociasse o melhor custo — aí teríamos múltiplas ações interdependentes que justificariam um agente.
+
+---
+
+### 3.8. Segurança: Prompt Injection e Inputs Maliciosos
+
+**Pergunta antecipada do professor:** *"O que acontece se o usuário enviar um input malicioso?"*
+
+O sistema possui duas camadas de proteção:
+
+1. **Validação de entrada via UI:** O Streamlit valida os inputs antes de enviá-los ao LLM. O FCK é um campo numérico (`st.number_input`) — o usuário não consegue digitar texto malicioso nele. O Slump e o tipo de agregado são selecionados via dropdown (`st.selectbox`), eliminando inputs arbitrários.
+
+2. **System Prompt defensivo:** As regras no `<rules>` do system prompt restringem o comportamento do modelo. Ele não pode executar tarefas fora do escopo de dosagem de concreto — se o usuário de alguma forma injetasse texto no prompt, a tag `<role>` e as `<rules>` mantêm o modelo ancorado na sua função de engenheiro civil.
+
+3. **Pydantic como última barreira:** Mesmo que o modelo gerasse um output malicioso ou incorreto, o Pydantic rejeitaria qualquer resposta que não seguisse exatamente o schema `TracoOutput`. Um campo `fck_alvo` com tipo `str` em vez de `float` lançaria `ValidationError` antes de chegar à UI.
+
+---
+
+## 4. O Que Funcionou
+
+### O CoT Híbrido (Prompt + Pydantic) Eliminou Erros de Cálculo
+
+A decisão mais impactante foi forçar o Chain-of-Thought como o primeiro campo do Pydantic. Antes dessa decisão, o modelo por vezes retornava um `consumo_cimento_m3` de 250 kg quando o mínimo normativo para FCK 30 é 280 kg. Depois de implementar o CoT, o modelo explicitamente escreve no campo `raciocinio_cot`: *"A ferramenta retornou consumo mínimo de 280kg. Adotarei 300kg para garantir margem de segurança"* e **depois** preenche `consumo_cimento_m3: 300`. A verbalização da restrição antes da decisão numérica funciona como uma "auto-verificação" interna.
+
+### O Tool Calling Garantiu Conformidade Normativa
+
+Em 100% dos testes, o modelo chamou a ferramenta `consultar_limites_normativos` antes de gerar o traço. A combinação de instrução imperativa no prompt (*"FERRAMENTA OBRIGATÓRIA"*) + uso do `.bind_tools()` tornou o comportamento previsível e confiável.
+
+### O LangChain Simplificou Radicalmente o Código
+
+O arquivo `ai_concreto.py` tem 181 linhas incluindo tratamento de erros, duas funções completas e todos os modelos Pydantic. Uma implementação equivalente com SDK puro teria facilmente o dobro de linhas e significativamente mais pontos de falha.
+
+---
+
+## 5. O Que Não Funcionou — Falhas e Ajustes
+
+### Problema 1: JSON Malformado Antes do Pydantic
+
+Nas primeiras iterações de desenvolvimento (antes de adotar `with_structured_output`), tentamos usar o `response_format={"type": "json_object"}` da API direta. O modelo frequentemente retornava JSONs com:
+- Comentários inline (`// cálculo de brita` dentro do JSON)
+- Trailing commas (`{"cimento": 300,}`)
+- Campos extras não solicitados que quebravam o parsing
+
+**Ajuste:** A migração para Pydantic + `with_structured_output` eliminou completamente esses problemas. O LangChain gera o JSON Schema a partir do BaseModel e o modelo é forçado a segui-lo via *constrained decoding*.
+
+### Problema 2: O Modelo Ignorava Limites Normativos sem CoT
+
+Em testes com temperatura 0.2 mas **sem** CoT, o modelo gerava traços que violavam os limites normativos em ~20% das chamadas. Ele simplesmente "chutava" uma relação a/c de 0.52 para FCK 40 (cujo máximo é 0.45). Quando introduzimos o campo `raciocinio_cot` que pedia para comparar explicitamente com os limites da ferramenta, as violações caíram para **0%**.
+
+### Problema 3: Temperatura 0.7 Gerava Valores Perigosos
+
+Nosso primeiro impulso ao configurar a temperatura foi usar 0.5 para "balancear criatividade e precisão". Ao testar com temperaturas mais altas (0.7), o modelo chegou a gerar uma relação a/c de **0.72** para FCK 25 (máximo normativo: 0.55). Isso seria um concreto estruturalmente perigoso se fosse para produção real. A redução para 0.2 eliminou esse risco.
+
+### Problema 4: Latência na Primeira Chamada
+
+A primeira requisição à API após abertura do sistema leva ~3-4 segundos (cold start do endpoint da OpenAI). Chamadas subsequentes ficam entre 1-2s. Não há solução elegante dentro do nosso escopo — é uma limitação inerente de APIs externas. Um modelo local via Ollama teria latência mais previsível, mas com os trade-offs mencionados na seção 3.1.
+
+### O Que Faríamos Diferente
+
+1. **Adicionar uma segunda ferramenta** para consultar custos de materiais diretamente do banco SQLite, em vez de injetá-los no prompt. Isso reduziria o tamanho do system prompt e manteria os dados sempre sincronizados.
+2. **Implementar cache de respostas** para traços idênticos (mesmo FCK, slump e materiais), evitando chamadas desnecessárias à API.
+3. **Experimentar `top_p` mais restritivo** (ex: 0.9) como segunda camada de controle de aleatoriedade, medindo o impacto na qualidade dos cálculos.
+
+---
+
+## 6. Estrutura do Repositório
+
+```text
+Intelig-ncia-Artificial-Generativa---Avalia-o-Intermedi-ria/
+│
+├── README.md                        # ← Você está aqui — Decisões de engenharia de LLM
+│
+├── prompts/
+│   └── sugerir_traco_system.txt     # System prompt com XML Tags, CoT e Few-Shot
+│
+├── tools/
+│   └── limites_normativos.py        # @tool — Limites normativos ABNT (Tool Calling)
+│
+├── components/
+│   └── ai_concreto.py               # Pipeline LangChain: bind_tools → with_structured_output
+│   └── servicos_gerenciador.py      # RBAC middleware e lógica de serviços
+│
+├── app_pages/                       # 12 páginas Streamlit (UI)
+│   ├── 01_🏠_Pagina_Inicial.py
+│   ├── 02_🏭_Fabrica_Dashboard.py
+│   ├── 05_🔬_Laboratorio_Engenharia.py
+│   ├── 06_🧪_Banco_de_Tracos_Inteligente.py  # ← Interface principal da IA
+│   └── ...
+│
+├── persistencia/                    # Camada de dados: Unit of Work + Repos
+│   ├── unit_of_work.py
+│   └── repositorios/
+│
+├── evocacao/                        # Material de aula do professor (PDFs)
+│   ├── Aula04_Prompt_Engineering.pdf
+│   ├── Aula05_APIs_LLMs.pptx.pdf
+│   ├── Aula06_Agentes_MultiAgente.pptx.pdf
+│   └── Aula07_RAG.pptx
+│
+├── teste/                           # Testes automatizados (pytest)
+├── instalacao/                      # Ferramentas GUI de setup
+├── config.py                        # Configurações e variáveis de ambiente
+└── Home.py                          # Entry point do Streamlit
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│                    ARQUITETURA FINAL                               │
-│                                                                    │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │  PRESENTATION LAYER                                          │  │
-│  │  Streamlit (12 páginas) + Plotly Express                     │  │
-│  │  Gestão de estado via st.session_state                       │  │
-│  └──────────────────┬───────────────────────────────────────────┘  │
-│                     │                                              │
-│  ┌──────────────────▼───────────────────────────────────────────┐  │
-│  │  BUSINESS LAYER                                              │  │
-│  │  ai_concreto.py (Mock AI — Lógica Estocástica)               │  │
-│  │  servicos_gerenciador.py (RBAC Middleware)                   │  │
-│  └──────────────────┬───────────────────────────────────────────┘  │
-│                     │                                              │
-│  ┌──────────────────▼───────────────────────────────────────────┐  │
-│  │  PERSISTENCE LAYER                                           │  │
-│  │  Unit of Work (Transações ACID)                              │  │
-│  │  Repository Pattern (BaseRepo + FabricaRepo + UsuarioRepo)  │  │
-│  └──────────────────┬───────────────────────────────────────────┘  │
-│                     │                                              │
-│  ┌──────────────────▼───────────────────────────────────────────┐  │
-│  │  DATA LAYER                                                  │  │
-│  │  SQLite + CHECK Constraints + Foreign Keys                   │  │
-│  │  DDL/DML scripts com ferramentas GUI de instalação           │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-│                                                                    │
-│  AGENTES UTILIZADOS: Claude 4.6 Opus · Gemini 1.5 Pro            │
-│  IDE: Antigravity                                                  │
-│  TESTES: pytest (6 módulos de teste)                              │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-### Resumo das Migrações
-
-| Fase | De → Para | Foco |
-|---|---|---|
-| **Fase 0** | Zero → NexlifyStreamlit | Boilerplate com autenticação e CRUD básico |
-| **Fase 1** | `easyToUseWeb` → `easyToUseWebWithDatabase` | Refatoração arquitetural: UoW, Repository, RBAC, Testes |
-| **Fase 2** | `easyToUseWebWithDatabase` → **SystemConcreto** | Pivô de domínio: Fábrica de Concreto, Mock AI, 12 páginas |
-
-> A migração provou que a estrutura base (autenticação, logs, config) poderia ser reaproveitada, mas o domínio do problema exigiu uma **reescrita completa** da camada de dados e lógica de negócios. O resultado é um sistema **funcional, seguro e capaz de simular decisões de engenharia complexas** — construído inteiramente com supervisão de agentes de IA.

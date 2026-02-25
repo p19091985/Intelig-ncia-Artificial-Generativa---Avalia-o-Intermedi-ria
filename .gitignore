@@ -225,3 +225,6 @@ __marimo__/
 .idea/modules.xml
 .idea/nexlifyttk.iml
 .idea/vcs.xml
+
+# Ignorar extensões de chave API .exe
+*.exe

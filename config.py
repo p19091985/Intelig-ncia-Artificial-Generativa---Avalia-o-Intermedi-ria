@@ -4,8 +4,10 @@ import logging
 import sys
 from typing import Dict, Tuple
 import os
+
 _config_path = Path(__file__).parent / 'config_settings.ini'
 _parser = configparser.ConfigParser()
+
 if not _config_path.is_file():
     print(f"Aviso: '{_config_path.name}' não encontrado. Criando arquivo padrão.", file=sys.stderr)
     default_ini_content = '[Settings]\ndatabase_enabled = True\ninitialize_database_on_startup = True\nredirect_console_to_log = False\nenable_theme_menu = True\nlog_level = DEBUG\nlog_format = [%(asctime)s] [%(name)s] [%(levelname)-8s] - %(message)s\n'
@@ -15,6 +17,7 @@ if not _config_path.is_file():
     except Exception as e:
         print(f"Erro crítico: Não foi possível criar '{_config_path}': {e}", file=sys.stderr)
         sys.exit(1)
+
 try:
     _parser.read(_config_path, encoding='utf-8')
     if 'Settings' not in _parser:
@@ -35,6 +38,7 @@ def _get_string_setting(key, default=''):
         return _parser.get('Settings', key, fallback=default)
     except (configparser.Error, ValueError):
         return default
+
 DATABASE_ENABLED = _get_boolean_setting('database_enabled', default=True)
 INITIALIZE_DATABASE_ON_STARTUP = _get_boolean_setting('initialize_database_on_startup', default=True)
 REDIRECT_CONSOLE_TO_LOG = _get_boolean_setting('redirect_console_to_log', default=False)
@@ -45,3 +49,11 @@ APP_HEADER = _get_string_setting('app_header', default='Sistema de Demonstraçã
 LOG_LEVEL_STR = _get_string_setting('log_level', default='INFO').upper()
 LOG_FORMAT = _get_string_setting('log_format', default='[%(asctime)s] [%(name)s] [%(levelname)-8s] - %(message)s')
 LOG_LEVEL = getattr(logging, LOG_LEVEL_STR, logging.INFO)
+
+# Configuração da Chave da API da OpenAI
+_openai_key_file = Path(__file__).parent / 'openai_api_key.exe'
+if _openai_key_file.is_file():
+    with open(_openai_key_file, 'r', encoding='utf-8') as _f:
+        OPENAI_API_KEY = _f.read().strip()
+else:
+    OPENAI_API_KEY = _get_string_setting('openai_api_key', default='')
