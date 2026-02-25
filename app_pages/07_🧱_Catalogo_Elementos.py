@@ -10,6 +10,7 @@ from pathlib import Path
 from persistencia.unit_of_work import UnitOfWork
 from utils.st_utils import st_check_session, check_access
 from components import servicos_gerenciador as servico
+from utils.traco_utils import formatar_traco_legivel
 import config
 
 st.set_page_config(page_title="Catálogo de Elementos", layout="wide", page_icon="🧱")
@@ -116,7 +117,7 @@ if st.session_state.elem_show_form:
             traco_opcoes = {"(Nenhum)": None}
             if not df_tracos.empty:
                 for _, tr in df_tracos.iterrows():
-                    label = f"{tr['nome']} ({tr['traco_str']})"
+                    label = f"{tr['nome']} ({formatar_traco_legivel(tr['traco_str'])})"
                     traco_opcoes[label] = int(tr["id"])
 
             # Determinar índice inicial

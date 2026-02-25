@@ -33,7 +33,7 @@ class MateriaisDict(BaseModel):
 
 class TracoOutput(BaseModel):
     raciocinio_cot: str = Field(description="Chain of Thought: Seu processo de raciocínio lógico, passo a passo, detalhando todas as restrições da norma ANTES de preencher o restante dos campos.", alias="raciocinio_cot")
-    traco_sugerido: str = Field(description="Proporção do traço, ex: 1 : 2.2 : 3.1 : 0.5 a/c")
+    traco_sugerido: str = Field(description="Proporção do traço no formato 'Cimento : Areia : Brita : a/c', ex: 1 : 2.2 : 3.1 : 0.5 a/c")
     cimento_tipo: str
     fck_alvo: float
     slump_alvo: float
@@ -41,7 +41,7 @@ class TracoOutput(BaseModel):
     relacao_ac: float
     consumo_cimento_m3: float
     justificativa: str = Field(description="Texto longo em Markdown com a análise técnica")
-    custo_estimado: float
+    custo_estimado: float = Field(description="Custo total estimado em R$/m³. OBRIGATÓRIO calcular: somar (kg × custo_kg) de CADA material (Cimento, Areia, Brita, Água, Aditivo). Se custos não forem informados nos materiais_selecionados, usar referência: Cimento R$0.65/kg, Areia R$0.08/kg, Brita R$0.10/kg, Água R$0.005/L, Aditivo R$5.20/kg. Este valor NUNCA pode ser 0.00.")
     materiais_m3: MateriaisDict
 
 class OtimizacaoOutput(BaseModel):
@@ -55,7 +55,23 @@ class OtimizacaoOutput(BaseModel):
     justificativa: str = Field(description="Relatório Markdown de engenharia")
 
 
-# --- 3. Lógica Principal com LangChain ---
+# --- 3. Helper: Escapar cifrão para Streamlit Markdown ---
+
+def _escapar_cifrao(obj):
+    """
+    Recursively escapes '$' → '\\$' in all string values of a dict/list.
+    Prevents Streamlit from interpreting 'R$' as LaTeX math delimiters.
+    """
+    if isinstance(obj, str):
+        return obj.replace("R$", "R\\$")
+    elif isinstance(obj, dict):
+        return {k: _escapar_cifrao(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_escapar_cifrao(item) for item in obj]
+    return obj
+
+
+# --- 4. Lógica Principal com LangChain ---
 
 def sugerir_traco(
     fck: float,
@@ -116,7 +132,24 @@ def sugerir_traco(
         resposta_final = llm_estruturado.invoke(messages)
 
         # Converte o Pydantic BaseModel de volta para um dicionário para o Streamlit renderizar
-        return resposta_final.model_dump(by_alias=True)
+        resultado = resposta_final.model_dump(by_alias=True)
+
+        # Passo 3: Recalcular custo_estimado no Python (IA é imprecisa em aritmética)
+        # Somar (kg × custo_kg) de cada material retornado em materiais_m3
+        custo_calculado = 0.0
+        if resultado.get("materiais_m3") and isinstance(resultado["materiais_m3"], dict):
+            for nome_mat, info_mat in resultado["materiais_m3"].items():
+                if isinstance(info_mat, dict):
+                    kg = info_mat.get("kg", 0.0)
+                    custo_kg = info_mat.get("custo_kg", 0.0)
+                    custo_calculado += kg * custo_kg
+
+        # Usar o valor calculado se for maior que 0, senão manter o da IA como fallback
+        if custo_calculado > 0:
+            resultado["custo_estimado"] = round(custo_calculado, 2)
+
+        # Escapar '$' para evitar renderização LaTeX no Streamlit (R$0.70 → R\$0.70)
+        return _escapar_cifrao(resultado)
 
     except Exception as e:
         log.error(f"Erro ao processar LLM sugerir_traco: {e}")
@@ -165,7 +198,8 @@ Regras:
 
     try:
         resposta = llm_estruturado.invoke(messages)
-        return resposta.model_dump()
+        # Escapar '$' para evitar renderização LaTeX no Streamlit (R$0.70 → R\$0.70)
+        return _escapar_cifrao(resposta.model_dump())
 
     except Exception as e:
         log.error(f"Erro ao processar LLM otimizar_traco: {e}")

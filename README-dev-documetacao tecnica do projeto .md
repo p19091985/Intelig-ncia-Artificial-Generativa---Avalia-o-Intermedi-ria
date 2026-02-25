@@ -3,7 +3,7 @@
 > **Avaliação Intermediária — Inteligência Artificial Generativa (2026)**
 >
 > Sistema web para gestão integrada de fábrica de pré-moldados de concreto,
-> com dosagem inteligente de traços via **Mock AI** (algoritmos determinísticos).
+> com dosagem inteligente de traços via **GPT-4o-mini** (LangChain + Tool Calling + Structured Output).
 
 ---
 
@@ -29,9 +29,9 @@
 O **Pré-Moldados Garantia Eterna** é uma plataforma web construída com **Streamlit** para digitalizar
 a gestão completa de uma fábrica de pré-moldados de concreto. O sistema cobre:
 
-- **Dosagem inteligente** de traços de concreto (via Mock AI)
+- **Dosagem inteligente** de traços de concreto (via IA real — GPT-4o-mini com LangChain)
 - **Gestão de pedidos** com ciclo completo (Pendente → Em Produção → Concluído)
-- **Controle de estoque** de materiais (cimento, areia, brita, aditivos)
+- **Controle de estoque** de materiais (cimento, areia, brita, aditivos, adições, fibras, água)
 - **Catálogo de elementos** pré-moldados com CRUD completo
 - **Dashboard operacional** com KPIs, gráficos e alertas
 - **Controle de acesso** por perfis (RBAC) com 4 níveis
@@ -40,7 +40,7 @@ a gestão completa de uma fábrica de pré-moldados de concreto. O sistema cobre
 
 Fábricas de pré-moldados frequentemente gerenciam pedidos, traços e estoque em planilhas
 desconectadas. Este sistema centraliza todas as operações numa interface web única, adicionando
-inteligência artificial simulada para otimização de custos na dosagem de concreto.
+inteligência artificial real (GPT-4o-mini) para dosagem e otimização de custos de concreto.
 
 ---
 
@@ -71,7 +71,7 @@ O sistema segue uma arquitetura em camadas com padrões de projeto bem definidos
 ┌──────────────────────────────────────────────┐
 │              Streamlit UI (13 páginas)        │
 ├──────────────────────────────────────────────┤
-│          Mock AI Service (ai_concreto.py)     │
+│          AI Service (ai_concreto.py + GPT-4o-mini)  │
 ├──────────────────────────────────────────────┤
 │     Unit of Work + Repository Pattern         │
 │  ┌────────────┐  ┌────────────────────────┐  │
@@ -92,7 +92,7 @@ O sistema segue uma arquitetura em camadas com padrões de projeto bem definidos
 | **Unit of Work** | `persistencia/unit_of_work.py` | Transações atômicas com commit/rollback automático |
 | **Repository** | `persistencia/repositorios/` | Separação entre lógica de negócio e acesso a dados |
 | **RBAC** | `perfil_acesso` + `perfil_pagina_permissao` | Controle de acesso granular por perfil |
-| **Mock AI Service** | `components/ai_concreto.py` | Serviço desacoplado, substituível por LLM real |
+| **AI Service** | `components/ai_concreto.py` | Pipeline LangChain (GPT-4o-mini) com Tool Calling e Structured Output |
 
 ---
 
@@ -106,6 +106,8 @@ O sistema segue uma arquitetura em camadas com padrões de projeto bem definidos
 | SQLAlchemy | 2.0+ | Abstração de banco de dados |
 | Pandas | 2.0+ | Manipulação de DataFrames |
 | Plotly | 5.0+ | Gráficos interativos |
+| LangChain | 0.3+ | Framework de orquestração de LLM |
+| OpenAI API | gpt-4o-mini | Modelo de IA generativa |
 | Bcrypt | 4.0+ | Hash de senhas |
 | Fernet | — | Criptografia de credenciais |
 
@@ -201,7 +203,7 @@ Ao acessar o sistema, uma tela de autenticação será exibida.
 │   └── 12_ℹ️_Sobre.py               # Documentação técnica
 │
 ├── components/                      # Lógica de negócio
-│   ├── ai_concreto.py               # Mock AI (sugerir_traco, otimizar_traco)
+│   ├── ai_concreto.py               # Pipeline IA (LangChain + GPT-4o-mini: sugerir_traco, otimizar_traco)
 │   └── servicos_gerenciador.py      # Serviço de permissões
 │
 ├── persistencia/                    # Camada de dados
@@ -225,7 +227,8 @@ Ao acessar o sistema, uma tela de autenticação será exibida.
 │   └── test_config.py               # Configurações
 │
 ├── utils/                           # Utilitários Streamlit
-│   └── st_utils.py                  # Sessão, acesso, navegação
+│   ├── st_utils.py                  # Sessão, acesso, navegação
+│   └── traco_utils.py               # Formatação de traço com rótulos (Cimento:Areia:Brita:a/c)
 │
 └── instalacao/                      # Ferramentas de instalação
     ├── config_gui.py                # Configurador visual
@@ -259,30 +262,32 @@ python3 -m pytest teste/test_ai_concreto.py -v
 
 ---
 
-## 🧠 Mock AI — Dosagem de Concreto
+## 🧠 IA Real — Dosagem de Concreto via GPT-4o-mini
 
-O módulo `components/ai_concreto.py` simula inteligência artificial para dosagem de concreto.
-Utiliza algoritmos **determinísticos** baseados em:
+O módulo `components/ai_concreto.py` implementa um pipeline de IA generativa para dosagem de concreto
+utilizando **GPT-4o-mini** via **LangChain** com:
 
-- **Curva de Abrams** → Relação água/cimento (a/c) em função do FCK
-- **Normas técnicas** → NBR 6118 (projeto estrutural) e NBR 12655 (concreto dosado)
-- **Tabelas de referência** → Consumo de cimento por m³ para cada faixa de resistência
+- **Tool Calling** → Consulta automática de limites normativos ABNT (NBR 6118 / NBR 12655)
+- **Structured Output (Pydantic)** → Resposta validada com schema tipado (`TracoOutput`)
+- **Chain-of-Thought** → Raciocínio explícito antes do cálculo final
+- **Recálculo de Custo** → Custo por m³ recalculado em Python (IA é imprecisa em aritmética)
+- **Escape de Cifrão** → `R$` escapado para renderização correta no Streamlit Markdown
 
 ### Funções Disponíveis
 
 | Função | Entrada | Saída |
 |--------|---------|-------|
-| `sugerir_traco(fck, slump, agregado)` | FCK (MPa), Slump (mm), Tipo de brita | Traço, materiais/m³, custo, justificativa |
-| `otimizar_traco(traco_dict)` | Dicionário de traço existente | Traço otimizado com redução de custo |
+| `sugerir_traco(fck, slump, agregado, materiais_selecionados)` | FCK (MPa), Slump (mm), Tipo de brita, Materiais do estoque | Traço, materiais/m³, custo, justificativa técnica |
+| `otimizar_traco(traco_dict)` | Dicionário de traço existente | Traço otimizado com redução de custo via aditivos |
 
 ### Exemplo de Interface
 
 A página **05_🔬_Laboratório_Engenharia** implementa uma interface conversacional (`st.chat_message`)
-que simula interação com um LLM:
+com interação com o GPT-4o-mini:
 
-1. Usuário configura parâmetros (FCK, Slump, Agregado)
+1. Usuário configura parâmetros (FCK, Slump, Agregado, Materiais do estoque)
 2. Clica em "Gerar Traço com IA"
-3. Sistema exibe resposta formatada com métricas e justificativa técnica
+3. Sistema chama a API OpenAI, executa Tool Calling e retorna traço validado
 4. Histórico de conversa é mantido para comparar múltiplas dosagens
 
 ---
@@ -305,7 +310,7 @@ O sistema utiliza **SQLite** com o seguinte esquema:
 | Tabela | Registros | Função |
 |--------|-----------|--------|
 | `fab_clientes` | 5 | Clientes da fábrica |
-| `fab_materiais` | 12 | Cimento, areia, brita, aditivos, água |
+| `fab_materiais` | 44 | Cimento, areia, brita, aditivos, adições, fibras, água |
 | `fab_catalogo_elementos` | 12 | Blocos, tubos, vigas, pilares, lajes |
 | `fab_tracos_padrao` | 6 | Traços de referência (FCK 10 a 50) |
 | `fab_pedidos` | 10 | Pedidos com status e rastreabilidade |

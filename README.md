@@ -431,7 +431,7 @@ Em 100% dos testes, o modelo chamou a ferramenta `consultar_limites_normativos` 
 
 ### O LangChain Simplificou Radicalmente o Código
 
-O arquivo `ai_concreto.py` tem 181 linhas incluindo tratamento de erros, duas funções completas e todos os modelos Pydantic. Uma implementação equivalente com SDK puro teria facilmente o dobro de linhas e significativamente mais pontos de falha.
+O arquivo `ai_concreto.py` tem ~210 linhas incluindo tratamento de erros, duas funções completas, todos os modelos Pydantic, recálculo de custo por m³ em Python (garantindo precisão aritmética) e escape de cifrão para renderização correta no Streamlit. Uma implementação equivalente com SDK puro teria facilmente o dobro de linhas e significativamente mais pontos de falha.
 
 ---
 
@@ -474,34 +474,58 @@ Intelig-ncia-Artificial-Generativa---Avalia-o-Intermedi-ria/
 ├── README.md                        # ← Você está aqui — Decisões de engenharia de LLM
 │
 ├── prompts/
-│   └── sugerir_traco_system.txt     # System prompt com XML Tags, CoT e Few-Shot
+│   └── sugerir_traco_system.txt     # System prompt com XML Tags, CoT, Few-Shot e 6 regras
 │
 ├── tools/
 │   └── limites_normativos.py        # @tool — Limites normativos ABNT (Tool Calling)
 │
 ├── components/
-│   └── ai_concreto.py               # Pipeline LangChain: bind_tools → with_structured_output
+│   ├── ai_concreto.py               # Pipeline LangChain: bind_tools → with_structured_output
 │   └── servicos_gerenciador.py      # RBAC middleware e lógica de serviços
+│
+├── utils/                           # Utilitários do sistema
+│   ├── st_utils.py                  # Sessão, acesso, navegação Streamlit
+│   └── traco_utils.py               # Formatação de traço com rótulos (Cimento:Areia:Brita:a/c)
 │
 ├── app_pages/                       # 12 páginas Streamlit (UI)
 │   ├── 01_🏠_Pagina_Inicial.py
 │   ├── 02_🏭_Fabrica_Dashboard.py
-│   ├── 05_🔬_Laboratorio_Engenharia.py
-│   ├── 06_🧪_Banco_de_Tracos_Inteligente.py  # ← Interface principal da IA
-│   └── ...
+│   ├── 03_📝_Novo_Pedido.py          # Formulário de pedidos + geração de traço com IA
+│   ├── 04_🏭_Controle_Producao.py    # Chão de fábrica + baixa de estoque
+│   ├── 05_🔬_Laboratorio_Engenharia.py  # P&D de traços via IA (chat conversacional)
+│   ├── 06_🧪_Banco_de_Tracos_Inteligente.py  # Consulta e otimização de traços
+│   ├── 07_🧱_Catalogo_Elementos.py   # CRUD de peças pré-moldadas
+│   ├── 08_📦_Gestao_Materiais.py     # Estoque, custos, alertas
+│   ├── 09_🤝_Cadastro_Clientes.py    # CRM
+│   ├── 10_📜_Historico_Producao.py   # Relatórios com exportação CSV
+│   ├── 11_⚙️_Configuracoes.py        # Admin: Usuários, Permissões, Páginas, Tema
+│   └── 12_ℹ️_Sobre.py                # Documentação técnica do sistema
 │
 ├── persistencia/                    # Camada de dados: Unit of Work + Repos
-│   ├── unit_of_work.py
+│   ├── database.py                  # DatabaseManager (singleton)
+│   ├── unit_of_work.py              # Padrão Unit of Work
+│   ├── auth.py                      # Autenticação de usuários
+│   ├── security.py                  # Criptografia de credenciais
+│   ├── logger.py                    # Sistema de logs
+│   ├── sql_schema_SQLLite.sql       # DDL + DML completo
 │   └── repositorios/
-│
-├── evocacao/                        # Material de aula do professor (PDFs)
-│   ├── Aula04_Prompt_Engineering.pdf
-│   ├── Aula05_APIs_LLMs.pptx.pdf
-│   ├── Aula06_Agentes_MultiAgente.pptx.pdf
-│   └── Aula07_RAG.pptx
+│       ├── base.py                  # BaseRepository
+│       ├── fabrica_repo.py          # FabricaRepository (fab_*)
+│       ├── usuario.py               # UsuarioRepository
+│       ├── paginas.py               # PaginaRepository
+│       └── permissoes.py            # PermissaoRepository
 │
 ├── teste/                           # Testes automatizados (pytest)
+│   ├── conftest.py                  # Fixtures (DB in-memory)
+│   ├── test_db_connection.py
+│   ├── test_unit_of_work.py
+│   ├── test_repos.py
+│   ├── test_ai_concreto.py
+│   └── test_config.py
+│
 ├── instalacao/                      # Ferramentas GUI de setup
 ├── config.py                        # Configurações e variáveis de ambiente
+├── config_settings.ini              # Parâmetros configuráveis
+├── openai_api_key.exe               # Chave da API OpenAI (gitignored)
 └── Home.py                          # Entry point do Streamlit
 ```

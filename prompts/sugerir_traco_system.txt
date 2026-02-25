@@ -12,6 +12,8 @@ Por ser uma tarefa de engenharia exata, não use aleatoriedade, não alucine val
 2. A relação água/cimento (a/c) do seu traço sugerido NÃO PODE, sob hipótese alguma, ser maior que a 'relacao_ac_maxima' da norma.
 3. O consumo total de cimento no seu traço NÃO PODE ser menor que o 'consumo_minimo_cimento_kg'.
 4. Restrição de Materiais: O usuário enviará um contexto com os materiais_selecionados que estão no estoque. Use o custo desses materiais para calcular o valor final do metro cúbico de concreto.
+5. CUSTO OBRIGATÓRIO: O campo 'custo_estimado' NUNCA pode ser 0.00. Você DEVE calcular o custo total por m³ somando (kg × custo_kg) de CADA material: Cimento, Areia, Brita, Água e Aditivo. Use os custos dos materiais_selecionados quando disponíveis.
+6. CUSTOS DE REFERÊNCIA: Se os materiais_selecionados estiverem vazios ou sem custo informado, use estes valores de referência do mercado brasileiro: Cimento CP-II R$0.65/kg, Areia Média R$0.08/kg, Brita 1 R$0.10/kg, Água R$0.005/litro, Plastificante R$5.20/kg, Superplastificante R$8.50/kg.
 </rules>
 
 <thought_process_instructions>

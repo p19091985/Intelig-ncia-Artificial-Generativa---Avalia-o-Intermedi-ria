@@ -8,6 +8,8 @@ config_settings.ini.bak
 /documentacao
 *.csv
 
+*.exe
+
 __pycache__/
 *.py[codz]
 *$py.class

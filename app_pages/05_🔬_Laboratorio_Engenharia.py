@@ -11,6 +11,7 @@ from utils.st_utils import st_check_session, check_access
 from components import servicos_gerenciador as servico
 from components.ai_concreto import sugerir_traco
 from persistencia.unit_of_work import UnitOfWork
+from utils.traco_utils import formatar_traco_legivel, formatar_traco_detalhado
 import config
 
 st.set_page_config(page_title="AI Recomendação de Traço", layout="wide", page_icon="🧠")
@@ -190,7 +191,7 @@ with col_chat:
 
             # KPIs do resultado
             r1, r2, r3 = st.columns(3)
-            r1.metric("Traço", resultado["traco_sugerido"])
+            r1.metric("Traço", formatar_traco_legivel(resultado["traco_sugerido"]))
             r2.metric("Cimento", resultado["cimento_tipo"])
             r3.metric("💰 Custo/m³", f"R$ {resultado['custo_estimado']:.2f}")
 
@@ -218,7 +219,7 @@ with col_chat:
             ai_response = (
                 f"✅ **Traço gerado com sucesso!**\n\n"
                 f"| Parâmetro | Valor |\n|---|---|\n"
-                f"| Traço | {resultado['traco_sugerido']} |\n"
+                f"| Traço | {formatar_traco_legivel(resultado['traco_sugerido'])} |\n"
                 f"| Cimento | {resultado['cimento_tipo']} |\n"
                 f"| Relação a/c | {resultado['relacao_ac']} |\n"
                 f"| Custo/m³ | R$ {resultado['custo_estimado']:.2f} |\n"
@@ -237,8 +238,8 @@ with col_chat:
         st.markdown("---")
         res = st.session_state["ultimo_traco_ai"]
         st.info(
-            f"📌 Último traço gerado: **{res['traco_sugerido']}** "
-            f"(FCK {res['fck_alvo']} MPa)"
+            f"📌 Último traço gerado: **{formatar_traco_legivel(res['traco_sugerido'])}** "
+            f"(FCK {res['fck_alvo']} MPa · Custo: R$ {res['custo_estimado']:.2f}/m³)"
         )
         from datetime import datetime
         ts = datetime.now().strftime("%H%M%S")

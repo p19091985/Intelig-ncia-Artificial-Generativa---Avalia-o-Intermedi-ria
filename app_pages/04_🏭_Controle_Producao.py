@@ -8,6 +8,7 @@ from pathlib import Path
 from persistencia.unit_of_work import UnitOfWork
 from utils.st_utils import st_check_session, check_access
 from components import servicos_gerenciador as servico
+from utils.traco_utils import formatar_traco_legivel
 import config
 
 st.set_page_config(page_title="Controle de Produção", layout="wide", page_icon="🏭")
@@ -102,7 +103,7 @@ with tab2:
                 kg_brita = round(kg_cimento * props["brita"], 1)
                 kg_aditivo = round(kg_cimento * 0.005, 2) # Est. 0.5%
                 
-                st.info(f"Subtotal Previsto: {vol_total} m³ de Concreto")
+                st.info(f"**Traço:** {formatar_traco_legivel(traco_str)}  ·  Subtotal Previsto: {vol_total} m³ de Concreto")
                 
                 # Form para Baixa
                 c1, c2 = st.columns(2)

@@ -11,6 +11,7 @@ from persistencia.unit_of_work import UnitOfWork
 from utils.st_utils import st_check_session, check_access
 from components import servicos_gerenciador as servico
 from components.ai_concreto import otimizar_traco
+from utils.traco_utils import formatar_traco_legivel
 import config
 
 st.set_page_config(page_title="Banco de Traços", layout="wide", page_icon="🧪")
@@ -80,7 +81,7 @@ if event.selection.rows:
     idx = event.selection.rows[0]
     selected_row = df_filtrado.iloc[idx].to_dict()
 
-    st.info(f"📌 Traço selecionado: **{selected_row['nome']}** — {selected_row['traco_str']}")
+    st.info(f"📌 Traço selecionado: **{selected_row['nome']}** — {formatar_traco_legivel(selected_row['traco_str'])}")
 
     if st.button("⚡ Otimizar Custo com AI", type="primary", width="stretch"):
         with st.spinner("🤖 IA analisando composição granulométrica e custos de materiais..."):
@@ -99,10 +100,10 @@ if event.selection.rows:
 
         col_orig, col_otim = st.columns(2)
         with col_orig:
-            st.metric("Traço Original", resultado["traco_original"])
+            st.metric("Traço Original", formatar_traco_legivel(resultado["traco_original"]))
             st.metric("Consumo Cimento", f"{resultado['consumo_original']} kg/m³")
         with col_otim:
-            st.metric("Traço Otimizado", resultado["traco_otimizado"])
+            st.metric("Traço Otimizado", formatar_traco_legivel(resultado["traco_otimizado"]))
             st.metric(
                 "Consumo Cimento",
                 f"{resultado['consumo_otimizado']} kg/m³",
